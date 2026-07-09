@@ -5,7 +5,7 @@ mod config;
 
 use std::sync::Mutex;
 use tauri::Manager;
-use app_dir::{init_app_dir, read_app_config, write_app_config, add_recent_project, save_tree_state, load_tree_state, get_config, save_config, test_llm_connection};
+use app_dir::{init_app_dir, read_app_config, write_app_config, add_recent_project, save_tree_state, load_tree_state, get_config, save_config, test_llm_connection, list_models};
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64};
 use python_bridge::{PythonBridge, PythonConfig, start_python, stop_python, python_health_check, python_status};
 
@@ -46,6 +46,7 @@ pub fn run() {
             get_config,
             save_config,
             test_llm_connection,
+            list_models,
         ])
         .setup(|app| {
             // 应用启动后自动启动 Python 后端

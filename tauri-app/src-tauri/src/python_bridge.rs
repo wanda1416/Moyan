@@ -71,18 +71,26 @@ impl PythonBridge {
         // 1. 自定义路径
         if let Some(ref path) = self.config.agent_core_path {
             let p = std::path::Path::new(path);
-            if p.exists() {
+            if p.exists() && p.join("main.py").exists() {
                 return Some(p.to_path_buf());
             }
         }
 
-        // 2. 从可执行文件位置向上查找
+        // 2. 从可执行文件位置向上查找（同时检查兄弟目录）
         if let Ok(exe) = std::env::current_exe() {
             let mut dir = exe.parent();
             while let Some(d) = dir {
-                let agent = d.join("agent-core");
-                if agent.exists() && agent.join("main.py").exists() {
-                    return Some(agent);
+                // 检查当前目录下的 agent-core 子目录
+                let child = d.join("agent-core");
+                if child.exists() && child.join("main.py").exists() {
+                    return Some(child);
+                }
+                // 检查兄弟目录（处理 tauri-app/ 与 agent-core/ 平级）
+                if let Some(parent) = d.parent() {
+                    let sibling = parent.join("agent-core");
+                    if sibling.exists() && sibling.join("main.py").exists() {
+                        return Some(sibling);
+                    }
                 }
                 dir = d.parent();
             }
@@ -90,9 +98,16 @@ impl PythonBridge {
 
         // 3. 从当前工作目录查找
         if let Ok(cwd) = std::env::current_dir() {
-            let agent = cwd.join("agent-core");
-            if agent.exists() && agent.join("main.py").exists() {
-                return Some(agent);
+            let child = cwd.join("agent-core");
+            if child.exists() && child.join("main.py").exists() {
+                return Some(child);
+            }
+            // 也检查 cwd 的兄弟目录
+            if let Some(parent) = cwd.parent() {
+                let sibling = parent.join("agent-core");
+                if sibling.exists() && sibling.join("main.py").exists() {
+                    return Some(sibling);
+                }
             }
         }
 
@@ -101,27 +116,24 @@ impl PythonBridge {
 
     /// 启动 Python Agent 进程（仅 spawn，不等待就绪）
     pub fn start(&self) -> Result<String, String> {
-        // 检查是否已在运行
-        if self.health_check_sync() {
-            return Ok("Python 后端已在运行".to_string());
-        }
-
-        let old_pid = PYTHON_PID.load(Ordering::SeqCst);
-        if old_pid > 0 && is_process_alive(old_pid) {
-            return Ok(format!("Python 后端已在运行 (PID: {})", old_pid));
-        }
+        // 检查端口是否已被占用
+        self.check_port_available()?;
 
         let python_path = self.resolve_python_path();
         let agent_dir = self
             .find_agent_core_dir()
             .ok_or_else(|| "找不到 agent-core 目录，请确认项目结构完整".to_string())?;
 
+        eprintln!("[PythonBridge] Python 路径: {}", &python_path);
+        eprintln!("[PythonBridge] agent-core: {}", agent_dir.display());
+
         let child = std::process::Command::new(&python_path)
             .arg("main.py")
             .current_dir(&agent_dir)
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            // stdout/stderr 继承父进程，直接输出到控制台
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
             .spawn()
             .map_err(|e| {
                 format!("启动 Python 失败 (路径: {}): {}", python_path, e)
@@ -180,6 +192,47 @@ impl PythonBridge {
         }
     }
 
+    /// 检查端口是否可用，若被占用则报错并提示 PID
+    fn check_port_available(&self) -> Result<(), String> {
+        // 先检查已记录的 PID
+        let old_pid = PYTHON_PID.load(Ordering::SeqCst);
+        if old_pid > 0 && is_process_alive(old_pid) {
+            return Err(format!(
+                "端口 {} 已被占用 (PID: {})，请先关闭占用的进程或终止上一次的进程",
+                self.config.port, old_pid
+            ));
+        }
+
+        // 通过系统命令查找占用端口的进程
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(output) = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile", "-Command",
+                    &format!(
+                        "Get-NetTCPConnection -LocalPort {} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique",
+                        self.config.port
+                    ),
+                ])
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    if let Ok(pid) = line.trim().parse::<u32>() {
+                        if pid > 0 {
+                            return Err(format!(
+                                "端口 {} 已被进程 PID {} 占用，请先关闭该进程后再启动",
+                                self.config.port, pid
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// 检查 Python 服务是否存活（供前端命令调用）
     pub async fn health_check_async(&self) -> bool {
         let url = format!(
@@ -230,18 +283,23 @@ impl PythonBridge {
     }
 }
 
-/// 终止指定 PID 的进程
+/// 终止指定 PID 的进程及其子进程
 fn kill_process(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        // /T = 杀进程树，/F = 强制终止
         std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output()
             .map_err(|e| format!("taskkill 失败: {}", e))?;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
+        // 杀进程组
+        let _ = std::process::Command::new("pkill")
+            .args(["-P", &pid.to_string()])
+            .output();
         unsafe {
             libc::kill(pid as i32, libc::SIGTERM);
         }

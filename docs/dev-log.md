@@ -88,6 +88,38 @@
 - `App.tsx` 启动时从 `config.json` 读取 `theme` 字段，切换时即时写入保存
 - 通过 `document.documentElement.setAttribute("data-theme", theme)` 实现全局切换
 
+### 2026-07-10 LLM 配置功能真实性修复
+
+- 修复 `config.py` 重复 Settings 类定义导致配置方法丢失的问题
+- 新增 Python `/api/test_llm` 端点：真正创建 LLM adapter 发送测试请求
+- 新增 Python `/api/list_models` 端点：获取可用模型列表（OpenAI `/v1/models`、Ollama `/api/tags`、Claude 固定列表）
+- Rust `test_llm_connection` 改为代理到 Python `/api/test_llm`，传入完整配置参数
+- Rust `save_config` 改为异步，保存文件后 POST 到 Python `/api/config` 同步内存配置
+- `Settings.tsx` 传 config 参数给测试命令，测试成功后自动拉取模型列表填充下拉框
+- 菜单分割线从文本模拟改为 `separator: true`，风格统一
+
+### 2026-07-10 PythonBridge 进程管理修复
+
+- 修复 `find_agent_core_dir()` 未覆盖兄弟目录搜索（`tauri-app/` 与 `agent-core/` 平级）
+- `resolve_python_path()` 优先使用 venv Python，避免使用系统 Python
+- 启动时打印 Python 路径和 agent-core 路径，方便排查
+- `Stdio::null()` 改为 `Stdio::inherit()`，Python 日志直接输出到控制台
+- 端口占用检测：检测到占用时报错提示 PID，不再主动杀进程
+- 进程清理：`taskkill /PID /F` 改为 `/T /F` 杀整棵进程树（含 uvicorn worker）
+- uvicorn 启动改为 `reload=False` + 直接传 app 对象，避免 Windows multiprocessing 产生多余进程
+- 安装 `openai` / `anthropic` 依赖到 venv，`requirements.txt` 取消注释
+
+### 2026-07-10 多 LLM 供应商配置重构
+
+- 配置格式从单一供应商改为多供应商管理：`config.json` 新增 `active_provider_id` + `llm_providers[]` 数组
+- Rust 新增 `LLMProviderEntry` 结构体（id/name/provider/api_key/base_url/model），`LLMConfig` 改为包含 providers 列表
+- Python `Settings` 新增 `llm_providers` + `active_provider_id` 字段，旧字段改为 `@property` 从激活供应商读取（agent 代码无需改动）
+- 旧格式自动迁移：检测到 `llm_provider` 字段但无 `llm_providers` 时，自动转换并写回新格式
+- `/api/test_llm`、`/api/list_models` 改为接收单个 provider entry 参数
+- `Settings.tsx` 完全重写为左右分栏布局：左侧供应商列表（点击切换、删除、默认标记），右侧编辑面板
+- 支持添加/删除多个供应商（至少保留一个），"设为默认供应商"按钮切换激活项
+- 新增供应商列表、分栏布局相关 CSS 样式
+
 ---
 
 ## 架构决策

@@ -986,6 +986,39 @@ html, body, #root {
 .settings-field select:focus {
   border-color: var(--accent);
 }
+.model-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.model-input-row select,
+.model-input-row input {
+  flex: 1;
+}
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 16px;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.btn-icon:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .settings-message {
   padding: 8px 12px;
   border-radius: 6px;
@@ -1001,6 +1034,11 @@ html, body, #root {
   background: rgba(243, 139, 168, 0.1);
   color: #f38ba8;
   border: 1px solid rgba(243, 139, 168, 0.2);
+}
+.settings-message.warning {
+  background: rgba(249, 226, 175, 0.1);
+  color: #f9e2af;
+  border: 1px solid rgba(249, 226, 175, 0.2);
 }
 .settings-actions {
   display: flex;
@@ -1034,4 +1072,168 @@ html, body, #root {
 }
 .btn-secondary:hover {
   background: var(--bg-primary);
+}
+
+/* === 多供应商分栏布局 === */
+.settings-panel-wide {
+  width: 720px;
+  max-width: 90vw;
+}
+.settings-body-split {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  min-height: 420px;
+}
+
+/* 左侧供应商列表 */
+.provider-list-panel {
+  width: 220px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.provider-list-header {
+  padding: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+.provider-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.provider-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+.provider-list-item:hover {
+  background: var(--bg-surface);
+}
+.provider-list-item.selected {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.provider-list-item.selected .provider-item-type {
+  color: rgba(255, 255, 255, 0.7);
+}
+.provider-list-item.selected .provider-delete-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+.provider-list-item.selected .provider-delete-btn:hover {
+  color: #fff;
+}
+.provider-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.provider-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.provider-item-type {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.provider-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.provider-active-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(166, 227, 161, 0.15);
+  color: #a6e3a1;
+  font-weight: 500;
+}
+.provider-list-item.selected .provider-active-badge {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.provider-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.provider-list-item:hover .provider-delete-btn {
+  opacity: 1;
+}
+.provider-delete-btn:hover {
+  color: #f38ba8;
+  background: rgba(243, 139, 168, 0.1);
+}
+.provider-add-btn {
+  display: block;
+  width: calc(100% - 16px);
+  margin: 8px;
+  padding: 8px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.provider-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(0, 102, 204, 0.05);
+}
+
+/* 右侧编辑面板 */
+.provider-edit-panel {
+  flex: 1;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.provider-edit-empty {
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+  padding: 40px 20px;
+}
+.btn-activate {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 12px;
+  transition: all 0.15s;
+}
+.btn-activate:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

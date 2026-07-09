@@ -83,6 +83,91 @@ async def update_config(data: dict):
     return {"status": "ok", "config": settings.to_dict(mask_api_key=True)}
 
 
+@app.post("/api/test_llm")
+async def test_llm(data: dict):
+    """测试 LLM 连接
+    接收单个 provider entry 参数，临时创建 adapter 发送测试请求
+    """
+    from llm.adapter import create_adapter, LLMMessage
+
+    provider = data.get("provider", "")
+    api_key = data.get("api_key", "")
+    model = data.get("model", "")
+    base_url = data.get("base_url", "")
+
+    if not provider:
+        return {"status": "error", "message": "缺少 provider 参数"}
+
+    try:
+        if provider == "ollama":
+            adapter = create_adapter("ollama", base_url=base_url, model=model)
+        else:
+            adapter = create_adapter(
+                provider,
+                api_key=api_key,
+                model=model,
+                base_url=base_url,
+            )
+
+        # 发送一个极简请求测试连接
+        messages = [LLMMessage("user", "Hi")]
+        result = await adapter.chat(messages, max_tokens=5)
+        return {"status": "ok", "message": f"连接成功，模型响应正常", "preview": result[:100]}
+    except ImportError as e:
+        return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install {str(e).split()[-1]}"}
+    except Exception as e:
+        return {"status": "error", "message": f"连接失败: {str(e)}"}
+
+
+@app.post("/api/list_models")
+async def list_models(data: dict):
+    """获取可用模型列表"""
+    import aiohttp
+
+    provider = data.get("provider", "")
+    api_key = data.get("api_key", "")
+    base_url = data.get("base_url", "")
+
+    if not provider:
+        return {"status": "error", "message": "缺少 provider 参数"}
+
+    try:
+        if provider == "ollama":
+            # Ollama: GET /api/tags
+            url = f"{base_url or 'http://localhost:11434'}/api/tags"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    resp_data = await resp.json()
+                    models = [m["name"] for m in resp_data.get("models", [])]
+            return {"status": "ok", "models": models}
+
+        elif provider == "claude":
+            # Claude 没有公开模型列表 API，返回已知模型
+            return {
+                "status": "ok",
+                "models": [
+                    "claude-sonnet-4-20250514",
+                    "claude-3-5-sonnet-20241022",
+                    "claude-3-5-haiku-20241022",
+                    "claude-3-opus-20240229",
+                ],
+            }
+
+        else:
+            # OpenAI / 兼容 API: GET /v1/models
+            url = base_url or "https://api.openai.com/v1"
+            url = url.rstrip("/") + "/models"
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    resp_data = await resp.json()
+                    models = [m["id"] for m in resp_data.get("data", [])]
+            return {"status": "ok", "models": models}
+
+    except Exception as e:
+        return {"status": "error", "message": f"获取模型列表失败: {str(e)}"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点 - Agent 通信"""
@@ -182,9 +267,11 @@ async def websocket_endpoint(websocket: WebSocket):
 if __name__ == "__main__":
     import uvicorn
 
+    # reload=False: 进程生命周期由 Tauri PythonBridge 管理，不需要 uvicorn 自己监控文件变化
+    # 直接传 app 对象而非字符串，避免 Windows 下 multiprocessing spawn 产生多余进程
     uvicorn.run(
-        "main:app",
+        app,
         host=settings.host,
         port=settings.port,
-        reload=True,
+        reload=False,
     )
