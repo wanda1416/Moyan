@@ -12,10 +12,13 @@ function isImageFile(path: string): boolean {
   return ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(ext);
 }
 
+type Theme = "light" | "dark";
+
 function App() {
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
+  const [theme, setTheme] = useState<Theme>("light");
   const expandedPathsRef = useRef<Set<string>>(new Set());
   const currentFileRef = useRef<string | null>(null);
 
@@ -37,8 +40,30 @@ function App() {
     } catch {}
   }, [projectRoot]);
 
+  // 加载主题配置
   useEffect(() => {
     invoke("init_app_dir").catch(console.error);
+    invoke<Record<string, unknown>>("read_app_config").then((config) => {
+      const saved = config?.theme as Theme | undefined;
+      if (saved === "light" || saved === "dark") {
+        setTheme(saved);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // 应用主题到 DOM
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
+  // 切换主题并保存
+  const handleThemeChange = useCallback(async (newTheme: Theme) => {
+    setTheme(newTheme);
+    try {
+      const config = await invoke<Record<string, unknown>>("read_app_config");
+      config.theme = newTheme;
+      await invoke("write_app_config", { config: JSON.stringify(config) });
+    } catch {}
   }, []);
 
   const handleFileSelect = useCallback(async (path: string) => {
@@ -130,12 +155,16 @@ function App() {
           console.error("保存文件失败:", err);
         }
       }
+    } else if (action === "set-theme-light") {
+      handleThemeChange("light");
+    } else if (action === "set-theme-dark") {
+      handleThemeChange("dark");
     }
-  }, [currentFile, fileContent, saveTreeState]);
+  }, [currentFile, fileContent, saveTreeState, handleThemeChange]);
 
   return (
     <div className="app-root">
-      <TitleBar onMenuAction={handleMenuAction} />
+      <TitleBar onMenuAction={handleMenuAction} theme={theme} />
       {!projectRoot ? (
         <Welcome onOpenProject={handleOpenProject} />
       ) : (

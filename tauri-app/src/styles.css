@@ -1,7 +1,25 @@
 :root {
+  /* 布局常量 */
   --sidebar-width: 260px;
   --agent-panel-width: 340px;
   --titlebar-height: 32px;
+}
+
+/* === 浅色主题（默认） === */
+[data-theme="light"], :root:not([data-theme]) {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-surface: #e0e0e0;
+  --text-primary: #1e1e1e;
+  --text-secondary: #616161;
+  --accent: #0066cc;
+  --border: #d4d4d4;
+  --shadow: rgba(0, 0, 0, 0.12);
+  --error: #d32f2f;
+}
+
+/* === 深色主题 === */
+[data-theme="dark"] {
   --bg-primary: #1e1e2e;
   --bg-secondary: #181825;
   --bg-surface: #313244;
@@ -9,6 +27,8 @@
   --text-secondary: #a6adc8;
   --accent: #89b4fa;
   --border: #45475a;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --error: #f38ba8;
 }
 
 * {
@@ -90,7 +110,7 @@ html, body, #root {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px var(--shadow);
   z-index: 200;
 }
 .menu-action {
@@ -324,7 +344,7 @@ html, body, #root {
   color: var(--text-secondary);
 }
 .editor-error {
-  color: #f38ba8;
+  color: var(--error);
 }
 
 /* === Markdown 预览 === */
@@ -433,7 +453,7 @@ html, body, #root {
   max-height: 100%;
   object-fit: contain;
   border-radius: 4px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 12px var(--shadow);
 }
 
 /* === Agent 面板 === */

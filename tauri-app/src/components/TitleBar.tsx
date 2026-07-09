@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface TitleBarProps {
   onMenuAction: (action: string) => void;
+  theme: "light" | "dark";
 }
 
 interface MenuItem {
@@ -18,7 +19,7 @@ interface MenuDef {
   items: MenuItem[];
 }
 
-export default function TitleBar({ onMenuAction }: TitleBarProps) {
+export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const titlebarRef = useRef<HTMLDivElement>(null);
@@ -94,6 +95,13 @@ export default function TitleBar({ onMenuAction }: TitleBarProps) {
         { label: "剪切", shortcut: "Ctrl+X", disabled: true },
         { label: "复制", shortcut: "Ctrl+C", disabled: true },
         { label: "粘贴", shortcut: "Ctrl+V", disabled: true },
+      ],
+    },
+    {
+      label: "视图",
+      items: [
+        { label: theme === "light" ? "✓ 浅色主题" : "  浅色主题", action: "set-theme-light" },
+        { label: theme === "dark" ? "✓ 深色主题" : "  深色主题", action: "set-theme-dark" },
       ],
     },
     {
