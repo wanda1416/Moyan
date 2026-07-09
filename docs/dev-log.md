@@ -78,6 +78,16 @@
 - `App.tsx` 通过 `currentFileRef` 同步跟踪当前文件，供防抖保存和显式保存使用
 - 打开项目时自动恢复上次编辑的文件（文件不存在则跳过）
 
+### 2026-07-10 深色/浅色主题切换
+
+- CSS 重构：`:root` 仅保留布局常量，主题色彩通过 `[data-theme]` 属性选择器切换
+- 浅色主题（默认）：白底 + 深色文字 + 蓝色强调色
+- 深色主题：保留原 Catppuccin Mocha 配色方案
+- 新增 `--shadow` / `--error` 主题变量，替代硬编码颜色值
+- `TitleBar.tsx` 新增"视图"菜单，包含浅色/深色主题选项，当前主题显示 ✓ 标记
+- `App.tsx` 启动时从 `config.json` 读取 `theme` 字段，切换时即时写入保存
+- 通过 `document.documentElement.setAttribute("data-theme", theme)` 实现全局切换
+
 ---
 
 ## 架构决策

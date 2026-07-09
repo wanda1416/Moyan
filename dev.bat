@@ -1,48 +1,24 @@
 @echo off
-setlocal EnableDelayedExpansion
+REM Moyan dev startup script (CMD)
+REM Usage: dev.bat
+REM Python backend is auto-managed by Tauri (PythonBridge)
+
+setlocal
 
 echo === Moyan Dev Environment ===
 
-:: Script directory
+REM Check prerequisites
 set "SCRIPT_DIR=%~dp0"
-
-:: 1. Start Python backend
-echo [1/2] Starting Python backend...
-cd /d "%SCRIPT_DIR%agent-core"
-if exist ".venv\Scripts\python.exe" (
-    start /b .venv\Scripts\python.exe main.py
+if exist "%SCRIPT_DIR%agent-core\.venv\Scripts\python.exe" (
+    echo   Python venv found
 ) else (
-    echo   venv not found, falling back to system python
-    start /b python main.py
+    echo   WARNING: agent-core\.venv not found, will use system python
 )
-cd /d "%SCRIPT_DIR%"
 
-:: Wait for backend
-echo   Waiting for backend...
-set "READY=0"
-for /l %%i in (1,1,10) do (
-    if !READY! equ 0 (
-        timeout /t 1 /nobreak >nul
-        curl -sf http://127.0.0.1:8765/health >nul 2>&1
-        if !errorlevel! equ 0 (
-            set "READY=1"
-            echo   Python backend ready (http://127.0.0.1:8765)
-        )
-    )
-)
-if !READY! equ 0 echo   Backend still starting, please wait...
-
-:: 2. Start Tauri desktop app
-echo [2/2] Starting Tauri desktop app...
+REM Start Tauri desktop app (Python backend auto-starts via PythonBridge)
+echo [1/1] Starting Tauri desktop app...
+echo   Python backend will be auto-managed.
 cd /d "%SCRIPT_DIR%tauri-app"
 call npm run tauri dev
-
-:: Cleanup
-echo.
-echo Shutting down Python backend...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8765" ^| findstr "LISTENING"') do (
-    taskkill /f /pid %%a >nul 2>&1
-)
-echo Done.
 
 endlocal

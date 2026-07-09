@@ -466,10 +466,61 @@ html, body, #root {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
 }
-.agent-header h3 {
+.agent-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.agent-header-top h3 {
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin: 0;
+}
+
+/* === Python 连接状态 === */
+.python-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.connected {
+  background: #40c057;
+  box-shadow: 0 0 4px rgba(64, 192, 87, 0.5);
+}
+.status-dot.disconnected {
+  background: #e03131;
+  box-shadow: 0 0 4px rgba(224, 49, 49, 0.4);
+}
+.status-text {
+  color: var(--text-secondary);
+}
+.reconnect-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 13px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+.reconnect-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 .agent-tabs {
   display: flex;
