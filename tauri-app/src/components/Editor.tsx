@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import * as monaco from "monaco-editor";
 
 interface EditorProps {
   filePath: string | null;
@@ -9,7 +10,6 @@ interface EditorProps {
   onChange: (value: string) => void;
 }
 
-// 根据文件扩展名判断类型
 type FileType = "text" | "markdown" | "image" | "unknown";
 
 function getFileType(path: string | null): FileType {
@@ -35,13 +35,102 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
+function getLanguage(fileType: FileType, path: string): string {
+  if (fileType === "markdown") return "markdown";
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  const langMap: Record<string, string> = {
+    json: "json", yaml: "yaml", yml: "yaml", toml: "toml",
+    xml: "xml", html: "html", css: "css",
+    js: "javascript", ts: "typescript", jsx: "javascript", tsx: "typescript",
+    py: "python", rs: "rust", go: "go", java: "java",
+    c: "c", cpp: "cpp", h: "c",
+    sh: "shell", bat: "bat", ps1: "powershell",
+    sql: "sql", log: "log",
+  };
+  return langMap[ext] || "plaintext";
+}
+
+function countWords(text: string): number {
+  // 中文字符数 + 英文单词数
+  const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const english = text.replace(/[\u4e00-\u9fff]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 0).length;
+  return chinese + english;
+}
+
 export default function Editor({ filePath, content, onChange }: EditorProps) {
   const [mdMode, setMdMode] = useState<"preview" | "source">("preview");
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wordCount, setWordCount] = useState(0);
+
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const fileType = getFileType(filePath);
+
+  // 字数统计
+  useEffect(() => {
+    setWordCount(countWords(content));
+  }, [content]);
+
+  // 初始化 Monaco Editor
+  useEffect(() => {
+    if (fileType !== "text" && fileType !== "markdown") return;
+    if (mdMode === "preview") return;
+    if (!editorContainerRef.current) return;
+
+    // 清理旧实例
+    if (editorRef.current) {
+      editorRef.current.dispose();
+      editorRef.current = null;
+    }
+
+    const editor = monaco.editor.create(editorContainerRef.current, {
+      value: content,
+      language: getLanguage(fileType, filePath || ""),
+      theme: "vs-dark",
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 14,
+      lineNumbers: "on",
+      wordWrap: "on",
+      scrollBeyondLastLine: false,
+      renderWhitespace: "selection",
+      tabSize: 2,
+      padding: { top: 8 },
+    });
+
+    editor.onDidChangeModelContent(() => {
+      const value = editor.getValue();
+      onChangeRef.current(value);
+    });
+
+    editorRef.current = editor;
+
+    return () => {
+      editor.dispose();
+      editorRef.current = null;
+    };
+  }, [filePath, fileType, mdMode]);
+
+  // 更新内容（外部变化时同步到 Monaco）
+  useEffect(() => {
+    if (editorRef.current) {
+      const currentValue = editorRef.current.getValue();
+      if (currentValue !== content) {
+        const position = editorRef.current.getPosition();
+        editorRef.current.setValue(content);
+        if (position) {
+          editorRef.current.setPosition(position);
+        }
+      }
+    }
+  }, [content]);
 
   // 加载图片文件
   useEffect(() => {
@@ -140,6 +229,7 @@ export default function Editor({ filePath, content, onChange }: EditorProps) {
               源码
             </button>
           </div>
+          <span className="tab-info">{wordCount.toLocaleString()} 字</span>
         </div>
         {mdMode === "preview" ? (
           <div className="markdown-preview">
@@ -148,12 +238,7 @@ export default function Editor({ filePath, content, onChange }: EditorProps) {
             </ReactMarkdown>
           </div>
         ) : (
-          <textarea
-            className="editor-textarea"
-            value={content}
-            onChange={(e) => onChange(e.target.value)}
-            spellCheck={false}
-          />
+          <div ref={editorContainerRef} className="monaco-container" />
         )}
       </div>
     );
@@ -165,14 +250,9 @@ export default function Editor({ filePath, content, onChange }: EditorProps) {
       <div className="editor-wrapper">
         <div className="editor-tab">
           <span className="tab-filename">{getFileName(filePath)}</span>
-          <span className="tab-info">文本</span>
+          <span className="tab-info">{wordCount.toLocaleString()} 字</span>
         </div>
-        <textarea
-          className="editor-textarea"
-          value={content}
-          onChange={(e) => onChange(e.target.value)}
-          spellCheck={false}
-        />
+        <div ref={editorContainerRef} className="monaco-container" />
       </div>
     );
   }
