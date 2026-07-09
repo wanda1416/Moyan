@@ -5,6 +5,7 @@ import FileTree from "./components/FileTree";
 import Editor from "./components/Editor";
 import AgentPanel from "./components/AgentPanel";
 import Welcome from "./components/Welcome";
+import Settings from "./components/Settings";
 import "./styles.css";
 
 function isImageFile(path: string): boolean {
@@ -19,6 +20,7 @@ function App() {
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
   const [theme, setTheme] = useState<Theme>("light");
+  const [showSettings, setShowSettings] = useState(false);
   const expandedPathsRef = useRef<Set<string>>(new Set());
   const currentFileRef = useRef<string | null>(null);
 
@@ -159,6 +161,8 @@ function App() {
       handleThemeChange("light");
     } else if (action === "set-theme-dark") {
       handleThemeChange("dark");
+    } else if (action === "open-settings") {
+      setShowSettings(true);
     }
   }, [currentFile, fileContent, saveTreeState, handleThemeChange]);
 
@@ -196,6 +200,7 @@ function App() {
           </aside>
         </div>
       )}
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

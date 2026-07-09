@@ -102,6 +102,8 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
       items: [
         { label: theme === "light" ? "✓ 浅色主题" : "  浅色主题", action: "set-theme-light" },
         { label: theme === "dark" ? "✓ 深色主题" : "  深色主题", action: "set-theme-dark" },
+                { label: "───", action: "" },
+                { label: "设置...", action: "open-settings" },
       ],
     },
     {

@@ -186,3 +186,93 @@ pub struct AppDirInfo {
     pub projects_dir: String,
     pub config_path: String,
 }
+
+/// LLM 配置结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LLMConfig {
+    pub llm_provider: String,
+    pub llm_model: String,
+    pub llm_base_url: String,
+    pub llm_api_key: String,
+    pub ollama_base_url: String,
+    pub ollama_model: String,
+}
+
+/// 获取 LLM 配置（从 ~/.moyan/config.json 读取）
+#[tauri::command]
+pub fn get_config() -> Result<LLMConfig, String> {
+    let config_path = get_moyan_dir()?.join("config.json");
+    let default = LLMConfig {
+        llm_provider: "openai".to_string(),
+        llm_model: "gpt-4".to_string(),
+        llm_base_url: String::new(),
+        llm_api_key: String::new(),
+        ollama_base_url: "http://localhost:11434".to_string(),
+        ollama_model: "llama3".to_string(),
+    };
+
+    if !config_path.exists() {
+        return Ok(default);
+    }
+
+    let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let json: serde_json::Value = serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}));
+
+    Ok(LLMConfig {
+        llm_provider: json["llm_provider"].as_str().unwrap_or("openai").to_string(),
+        llm_model: json["llm_model"].as_str().unwrap_or("gpt-4").to_string(),
+        llm_base_url: json["llm_base_url"].as_str().unwrap_or("").to_string(),
+        llm_api_key: if json["llm_api_key"].as_str().unwrap_or("").is_empty() {
+            String::new()
+        } else {
+            "***".to_string()
+        },
+        ollama_base_url: json["ollama_base_url"].as_str().unwrap_or("http://localhost:11434").to_string(),
+        ollama_model: json["ollama_model"].as_str().unwrap_or("llama3").to_string(),
+    })
+}
+
+/// 保存 LLM 配置
+#[tauri::command]
+pub fn save_config(config: LLMConfig) -> Result<String, String> {
+    let config_path = get_moyan_dir()?.join("config.json");
+
+    // 读取现有配置
+    let mut json: serde_json::Value = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // 更新 LLM 字段
+    json["llm_provider"] = serde_json::Value::String(config.llm_provider);
+    json["llm_model"] = serde_json::Value::String(config.llm_model);
+    json["llm_base_url"] = serde_json::Value::String(config.llm_base_url);
+    json["ollama_base_url"] = serde_json::Value::String(config.ollama_base_url);
+    json["ollama_model"] = serde_json::Value::String(config.ollama_model);
+
+    // API Key: 如果是 "***" 则不覆盖
+    if config.llm_api_key != "***" && !config.llm_api_key.is_empty() {
+        json["llm_api_key"] = serde_json::Value::String(config.llm_api_key);
+    }
+
+    let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    Ok("ok".to_string())
+}
+
+/// 测试 LLM 连接（通过 Python 后端 HTTP 代理）
+#[tauri::command]
+pub async fn test_llm_connection() -> Result<String, String> {
+    // 通过 Python 后端的 /health 端点间接验证
+    let resp = reqwest::get("http://127.0.0.1:8765/health")
+        .await
+        .map_err(|e| format!("Python 后端未运行: {}", e))?;
+
+    if resp.status().is_success() {
+        Ok("Python 后端连接正常".to_string())
+    } else {
+        Err("Python 后端响应异常".to_string())
+    }
+}
