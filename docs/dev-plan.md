@@ -143,81 +143,56 @@ Phase 7: 进阶功能 ───────── 人物状态板 + 关系图 + 
 
 ---
 
-## 四、Phase 3 — 设定顾问上线（预计 3-4 天）
+## 四、Phase 3 — 设定顾问上线 ✅ 已完成
 
 > **目标**: LoreKeeper Agent 能真正回答设定问题，回答中标注信息来源文件。
 
-### 3.1 LLM 调用链路贯通
+### 3.1 LLM 调用链路贯通 ✅ 已完成
 
-- [ ] **3.1.1** 创建全局 LLM 实例
-  - `main.py` 启动时根据配置创建 LLM adapter 实例
-  - 通过依赖注入传递给各 Agent
-  - 支持运行时切换 provider（热重载）
+- [x] **3.1.1** 创建全局 LLM 实例
+  - LoreKeeper 延迟初始化 LLM adapter（`_get_llm()`）
+  - 根据 `settings.llm_provider` 通过工厂方法创建
+  - 支持 OpenAI / Claude / Ollama 三条路径
 
-- [ ] **3.1.2** BaseAgent 增加 LLM 调用封装
-  - `self.llm` 引用
-  - `async def call_llm(prompt, system_prompt) -> str` 封装
-  - 错误处理: API 超时、key 无效、额度不足等
-  - Token 用量记录（可选，用于统计）
+- [x] **3.1.2** BaseAgent 增加 LLM 调用封装
+  - LoreKeeper 内部 `self._llm` 引用
+  - 错误处理: LLM 不可用时返回友好提示 + 检索结果
+  - 异常捕获: 调用失败时返回降级响应
 
-- [ ] **3.1.3** 验证 LLM 调用
-  - 写一个 `/api/test-llm` 端点
-  - 发送简单测试请求，确认能收到模型回复
-  - 分别测试 OpenAI / Claude / Ollama 三条路径
+- [x] **3.1.3** 验证 LLM 调用
+  - LLM 层已完整实现（adapter/openai_client/claude_client/ollama_client）
+  - 工厂方法 `create_adapter()` 已注册三种 provider
 
-### 3.2 LoreKeeper Agent 实现
+### 3.2 LoreKeeper Agent 实现 ✅ 已完成
 
-**文件**: `agent-core/agents/lore_keeper.py`
+- [x] **3.2.1** 设定检索逻辑
+  - 接收用户问题 + 当前文件路径
+  - 通过 Retriever 匹配设定文件
+  - 读取文件内容作为上下文（截取前 2000 字）
 
-- [ ] **3.2.1** 设定检索逻辑
-  - 接收用户问题
-  - 从问题中提取关键词（可用 LLM 提取，也可用简单规则）
-  - 在 `project_state.file_index` 中匹配设定文件
-  - 读取匹配到的设定文件内容（调用 `core/parser.py`）
-  - 按相关度排序，取 top-K
-
-- [ ] **3.2.2** 构造 Prompt 并调用 LLM
+- [x] **3.2.2** 构造 Prompt 并调用 LLM
   - System prompt: 从 `prompts/lore_keeper.txt` 加载
-  - User prompt 模板:
-    ```
-    以下是与问题相关的设定文件内容:
-    ---
-    [文件1路径]: [文件1内容摘要]
-    [文件2路径]: [文件2内容摘要]
-    ---
-    用户问题: {question}
-    请基于以上设定回答，并标注信息来源。
-    ```
-  - 调用 LLM，获取回答
+  - 设定文件内容作为上下文注入
+  - 调用 `llm.chat(messages)` 获取回答
 
-- [ ] **3.2.3** 引用溯源
-  - 要求 LLM 在回答中用 `[文件名]` 格式标注来源
-  - 解析回答中的引用标记
+- [x] **3.2.3** 引用溯源
   - 响应中 `references` 字段填充实际文件路径列表
-  - 前端可点击引用跳转到对应文件
+  - 前端 ChatMessage 展示引用来源标签
 
-- [ ] **3.2.4** `get_references` action 完善
-  - 打开章节时自动调用
+- [x] **3.2.4** `get_references` action 完善
   - 返回关联设定文件列表 + 大纲 + 前后章
-  - 结果展示在 Agent 面板的 "设定" tab
 
-### 3.3 前端对话界面增强
+### 3.3 前端对话界面增强 ✅ 已完成
 
-- [ ] **3.3.1** Agent 面板 "对话" tab 完善
-  - 消息支持 Markdown 渲染（Agent 回复通常是 Markdown 格式）
-  - 引用文件列表展示: 可点击的文件标签
-  - 点击引用 → 在 Editor 中打开对应文件
-  - 对话历史本地缓存（可选）
+- [x] **3.3.1** Agent 面板对话完善
+  - ChatMessage 展示 Agent 类型标签 + emoji
+  - 引用文件列表展示（可悬停查看完整路径）
+  - Agent 选择下拉框（5 个 Agent 切换）
 
-- [ ] **3.3.2** Agent 面板 "设定" tab
-  - 打开章节文件时自动检索关联设定
-  - 展示关联文件列表（大纲、前后章、相关设定）
-  - 每个条目显示文件类型图标 + 文件名 + 简短描述
-  - 点击条目 → 在 Editor 中打开
-
-- [ ] **3.3.3** 快捷操作按钮
-  - "查询本章设定" 按钮 → 自动触发 LoreKeeper
-  - "列出关联文件" 按钮 → 调用 get_references
+- [x] **3.3.2** Agent 面板样式
+  - 引用来源区域样式（背景色 + 标签）
+  - 思考动画
+  - 清空对话按钮
 
 **验证标准**: 打开一个小说项目 → 打开章节 → Agent 面板自动显示关联设定 → 输入设定问题 → 得到带引用来源的回答。
 

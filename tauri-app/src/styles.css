@@ -693,6 +693,40 @@ html, body, #root {
   margin-top: 2px;
 }
 
+.chat-agent-label {
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.chat-references {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.ref-label {
+  color: var(--text-secondary);
+  margin-right: 2px;
+}
+.ref-item {
+  color: var(--accent);
+  background: var(--bg-primary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: default;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* === 伏笔提醒 === */
 .foreshadowing-alert {
   margin: 8px 12px;
