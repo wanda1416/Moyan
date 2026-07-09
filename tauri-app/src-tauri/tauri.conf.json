@@ -12,15 +12,40 @@
   "app": {
     "windows": [
       {
-        "title": "墨言 - AI 小说协作",
+        "title": "墨言",
+        "label": "main",
         "width": 1400,
         "height": 900,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "default",
+          "description": "墨言默认权限",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:window:allow-minimize",
+            "core:window:allow-maximize",
+            "core:window:allow-unmaximize",
+            "core:window:allow-unminimize",
+            "core:window:allow-close",
+            "core:window:allow-start-dragging",
+            "core:window:allow-toggle-maximize",
+            "core:window:allow-is-maximized",
+            "core:window:allow-set-focus",
+            "dialog:default",
+            "shell:default",
+            "fs:default"
+          ]
+        }
+      ]
     }
   },
   "bundle": {

@@ -59,7 +59,7 @@
 - [Rust](https://www.rust-lang.org/tools/install) (最新稳定版)
 - [Python](https://www.python.org/) 3.11+
 
-### 安装与运行
+### 安装
 
 ```bash
 # 1. 克隆项目
@@ -67,13 +67,9 @@ git clone <repo-url>
 cd Moyan
 
 # 2. 安装前端依赖
-cd tauri-app
-npm install
+cd tauri-app && npm install && cd ..
 
-# 3. 启动 Tauri 开发模式
-npm run tauri dev
-
-# 4. 另起终端，启动 Python Agent 后端
+# 3. 安装 Python 依赖
 cd agent-core
 python -m venv .venv
 
@@ -83,13 +79,31 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -r requirements.txt
-python main.py
+cd ..
 ```
+
+### 一键启动
+
+```bash
+# Windows PowerShell
+.\dev.ps1
+
+# Windows CMD
+dev.bat
+
+# macOS / Linux
+bash dev.sh
+```
+
+脚本会自动启动 Python 后端和 Tauri 桌面应用，退出时自动清理后端进程。
 
 ## 项目结构
 
 ```
 Moyan/
+├── dev.sh              # 一键启动脚本 (Linux / macOS)
+├── dev.bat             # 一键启动脚本 (Windows CMD)
+├── dev.ps1             # 一键启动脚本 (Windows PowerShell)
 ├── tauri-app/          # Tauri 桌面应用 (Rust + React)
 │   ├── src/            # 前端源码
 │   ├── src-tauri/      # Rust 后端

@@ -24,6 +24,9 @@ Thumbs.db
 # Database
 *.db
 
+# Tauri
+tauri-app/src-tauri/gen/
+
 # Python
 *.pyc
 *.pyo
