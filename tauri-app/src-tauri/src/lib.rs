@@ -3,7 +3,7 @@ mod filesystem;
 mod python_bridge;
 mod config;
 
-use app_dir::{init_app_dir, read_app_config, write_app_config, add_recent_project};
+use app_dir::{init_app_dir, read_app_config, write_app_config, add_recent_project, save_tree_state, load_tree_state};
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +21,9 @@ pub fn run() {
             read_app_config,
             write_app_config,
             add_recent_project,
+            // 目录树状态持久化
+            save_tree_state,
+            load_tree_state,
             // 文件系统操作
             get_project_tree,
             read_file,

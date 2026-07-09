@@ -100,6 +100,85 @@ pub fn add_recent_project(project_path: String) -> Result<(), String> {
     std::fs::write(&config_path, content).map_err(|e| e.to_string())
 }
 
+/// 获取 ~/.moyan/state.json 路径（项目状态存储）
+fn get_state_path() -> Result<PathBuf, String> {
+    Ok(get_moyan_dir()?.join("state.json"))
+}
+
+/// 项目状态（展开路径 + 当前文件）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectState {
+    pub expanded_paths: Vec<String>,
+    pub current_file: Option<String>,
+}
+
+/// 保存项目状态（目录树展开 + 当前打开文件）
+#[tauri::command]
+pub fn save_tree_state(
+    project_path: String,
+    expanded_paths: Vec<String>,
+    current_file: Option<String>,
+) -> Result<(), String> {
+    let state_path = get_state_path()?;
+
+    let mut state: serde_json::Value = if state_path.exists() {
+        let content = std::fs::read_to_string(&state_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if state.get("project_states").is_none() {
+        state["project_states"] = serde_json::json!({});
+    }
+
+    let project_state = serde_json::json!({
+        "expanded_paths": expanded_paths,
+        "current_file": current_file,
+    });
+    state["project_states"][&project_path] = project_state;
+
+    let content = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
+    std::fs::write(&state_path, content).map_err(|e| e.to_string())
+}
+
+/// 加载项目状态（展开路径 + 当前文件）
+#[tauri::command]
+pub fn load_tree_state(project_path: String) -> Result<ProjectState, String> {
+    let state_path = get_state_path()?;
+
+    if !state_path.exists() {
+        return Ok(ProjectState {
+            expanded_paths: vec![],
+            current_file: None,
+        });
+    }
+
+    let content = std::fs::read_to_string(&state_path).map_err(|e| e.to_string())?;
+    let state: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    let project_state = &state["project_states"][&project_path];
+
+    if project_state.is_object() {
+        let expanded_paths = project_state["expanded_paths"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        let current_file = project_state["current_file"]
+            .as_str()
+            .map(String::from);
+        return Ok(ProjectState {
+            expanded_paths,
+            current_file,
+        });
+    }
+
+    Ok(ProjectState {
+        expanded_paths: vec![],
+        current_file: None,
+    })
+}
+
 /// 目录信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppDirInfo {

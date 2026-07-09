@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import TitleBar from "./components/TitleBar";
 import FileTree from "./components/FileTree";
@@ -16,6 +16,26 @@ function App() {
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [currentFile, setCurrentFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string>("");
+  const expandedPathsRef = useRef<Set<string>>(new Set());
+  const currentFileRef = useRef<string | null>(null);
+
+  // 同步 currentFile 到 ref
+  useEffect(() => {
+    currentFileRef.current = currentFile;
+  }, [currentFile]);
+
+  // 保存项目状态（目录树展开 + 当前文件）
+  const saveTreeState = useCallback(async () => {
+    if (!projectRoot) return;
+    try {
+      const paths = Array.from(expandedPathsRef.current);
+      await invoke("save_tree_state", {
+        projectPath: projectRoot,
+        expandedPaths: paths,
+        currentFile: currentFileRef.current,
+      });
+    } catch {}
+  }, [projectRoot]);
 
   useEffect(() => {
     invoke("init_app_dir").catch(console.error);
@@ -61,7 +81,22 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [handleSave]);
 
+  const handleExpandedChange = useCallback((paths: Set<string>) => {
+    expandedPathsRef.current = paths;
+  }, []);
+
+  // FileTree 加载完成后，恢复上次打开的文件
+  const handleFileTreeReady = useCallback((savedFile: string | null) => {
+    if (savedFile) {
+      handleFileSelect(savedFile);
+    }
+  }, [handleFileSelect]);
+
+  // 供 FileTree 防抖保存时获取当前文件
+  const getCurrentFile = useCallback(() => currentFileRef.current, []);
+
   const handleOpenProject = async (path: string) => {
+    await saveTreeState();
     setProjectRoot(path);
     setCurrentFile(null);
     setFileContent("");
@@ -78,6 +113,7 @@ function App() {
       try {
         const path = await invoke<string | null>("open_directory");
         if (path) {
+          await saveTreeState();
           setProjectRoot(path);
           setCurrentFile(null);
           setFileContent("");
@@ -95,7 +131,7 @@ function App() {
         }
       }
     }
-  }, [currentFile, fileContent]);
+  }, [currentFile, fileContent, saveTreeState]);
 
   return (
     <div className="app-root">
@@ -110,12 +146,18 @@ function App() {
               <button
                 className="btn-icon"
                 title="切换项目"
-                onClick={() => setProjectRoot(null)}
+                onClick={() => { saveTreeState(); setProjectRoot(null); }}
               >
                 ✕
               </button>
             </div>
-            <FileTree projectRoot={projectRoot} onFileSelect={handleFileSelect} />
+            <FileTree
+              projectRoot={projectRoot}
+              onFileSelect={handleFileSelect}
+              onExpandedChange={handleExpandedChange}
+              onReady={handleFileTreeReady}
+              getCurrentFile={getCurrentFile}
+            />
           </aside>
           <main className="editor-area">
             <Editor filePath={currentFile} content={fileContent} onChange={handleContentChange} />
