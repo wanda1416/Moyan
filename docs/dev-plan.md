@@ -56,74 +56,75 @@ Phase 7: 进阶功能 ───────── 人物状态板 + 关系图 + 
 
 > **目标**: 让 Tauri 前端能自动启动 Python 后端，并通过 WebSocket 完成一次完整的请求-响应循环。
 
-### 2.1 Python 进程管理（Rust 侧）
+### 2.1 Python 进程管理（Rust 侧） ✅ 已完成
 
 **文件**: `tauri-app/src-tauri/src/python_bridge.rs`
 
-- [ ] **2.1.1** 实现 `PythonBridge::start()`
+- [x] **2.1.1** 实现 `PythonBridge::start()`
   - 定位 Python 解释器路径（优先 venv：`agent-core/.venv/Scripts/python.exe` on Windows）
-  - 使用 `tauri_plugin_shell::ShellExt` 的 `Command` API 启动子进程
+  - 使用 `std::process::Command` 启动子进程（DETACHED_PROCESS）
   - 工作目录设为 `agent-core/`
   - 启动参数: `main.py`
   - 记录子进程 PID 用于后续清理
   - 错误处理: 路径不存在、启动失败时返回明确错误信息
 
-- [ ] **2.1.2** 实现 `PythonBridge::health_check()`
+- [x] **2.1.2** 实现 `PythonBridge::health_check()`
   - 向 `http://127.0.0.1:8765/health` 发送 HTTP GET
-  - 使用 `reqwest` 或 `ureq` 做 HTTP 客户端
+  - 使用 `reqwest` (blocking + async) 做 HTTP 客户端
   - 返回 bool 表示服务是否存活
 
-- [ ] **2.1.3** 实现 `PythonBridge::stop()`
-  - 先尝试优雅关闭（发送 SIGTERM 或对应 Windows 信号）
-  - 超时后强制 kill
+- [x] **2.1.3** 实现 `PythonBridge::stop()`
+  - Windows: `taskkill /PID /F`
+  - Unix: `libc::kill(pid, SIGTERM)`
   - 清理 PID 记录
 
-- [ ] **2.1.4** 集成到 Tauri 应用生命周期
-  - `lib.rs` 的 `run()` 中: 应用启动时检查 Python 服务是否已运行
-  - 若未运行 → 自动启动
-  - 应用关闭时 → 自动停止 Python 进程
-  - 使用 Tauri 的 `setup` hook 或 `Manager` 生命周期管理
+- [x] **2.1.4** 集成到 Tauri 应用生命周期
+  - `lib.rs` 的 `setup` hook: 后台线程调用 `start_and_wait()` 自动启动
+  - `on_window_event(Destroyed)`: 调用 `shutdown_python()` 清理进程
+  - `manage(Mutex<PythonBridge>)` 注册 Tauri 状态
 
-- [ ] **2.1.5** 暴露 Tauri 命令
-  - `start_python()` / `stop_python()` / `python_health_check()` 命令
+- [x] **2.1.5** 暴露 Tauri 命令
+  - `start_python()` / `stop_python()` / `python_health_check()` / `python_status()` 命令
   - 注册到 `invoke_handler`
-  - 前端可通过菜单或状态栏手动重连
+  - 前端 AgentPanel 通过状态指示器展示连接状态 + 手动重连按钮
 
-**验证标准**: 启动 `dev.ps1` 后，Python 后端自动运行，`/health` 返回 200。
+**验证标准**: ✅ 启动应用 → Python 后端自动启动 → 前端绿点显示"已连接" → 退出时自动清理
 
-### 2.2 WebSocket 通信全链路
+### 2.2 WebSocket 通信全链路 ✅ 已完成
 
 **前端侧**:
 
-- [ ] **2.2.1** 重构 `useAgent.ts`
+- [x] **2.2.1** 重构 `useAgent.ts`
   - 连接时机: 打开项目时自动 connect，关闭项目时 disconnect
   - 断线重连: 指数退避重试（1s → 2s → 4s → 8s，最大 30s）
   - 连接状态暴露: `connected: boolean`
   - 请求-响应匹配: send 返回 Promise，通过请求 ID 关联响应
   - 错误处理: 连接失败、超时、服务端错误的统一处理
 
-- [ ] **2.2.2** 重构 `AgentPanel.tsx`
+- [x] **2.2.2** 重构 `AgentPanel.tsx`
   - 引入 `useAgent` hook
   - `handleSend` 实际调用 `send()` 方法
   - 显示连接状态指示器（绿点/红点）
-  - 加载中状态: 发送后显示 "思考中..." 占位
-  - 支持 Agent 类型选择（下拉框或 tab 切换）
+  - 加载中状态: 发送后显示思考动画
+  - 支持 Agent 类型选择（下拉框切换 5 个 Agent）
   - 消息列表自动滚动到底部
+  - 清空对话按钮
 
-- [ ] **2.2.3** 打通文件上下文
-  - 打开文件时，通知 Python 端 "当前文件 = xxx"
+- [x] **2.2.3** 打通文件上下文
+  - 打开文件时，通知 Python 端 "当前文件 = xxx" (set_current_file)
   - Agent 请求自动携带当前文件路径
-  - Agent 面板显示当前关联文件列表（从 Retriever 获取）
+  - Python 端自动检索关联文件并返回
 
 **Python 侧**:
 
-- [ ] **2.2.4** 完善 WebSocket 消息协议
+- [x] **2.2.4** 完善 WebSocket 消息协议
   - 定义请求格式: `{ request_id, agent_type, action, payload }`
   - 定义响应格式: `{ request_id, success, agent_type, content, references, structured_data }`
-  - 添加错误响应格式: `{ request_id, success: false, error_type, error_message }`
-  - 添加心跳机制: 定期 ping/pong 保持连接
+  - 添加错误响应格式: `{ request_id, success: false, error_type, content }`
+  - 特殊动作: `set_current_file` (设置当前文件+自动检索关联) / `ping` (心跳)
+  - 自动注入当前文件上下文到 Agent 请求
 
-**验证标准**: 前端 Agent 面板输入文字 → 发送 → Python 收到 → 返回 echo → 前端显示。
+**验证标准**: ✅ 前端 Agent 面板输入文字 → 发送 → Python 收到 → 返回响应 → 前端显示。打开文件自动通知 Python。
 
 ### 2.3 配置持久化
 

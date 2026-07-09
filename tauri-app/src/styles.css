@@ -522,6 +522,78 @@ html, body, #root {
   color: var(--text-primary);
   border-color: var(--accent);
 }
+
+/* === Agent 选择器 === */
+.agent-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.agent-selector select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+}
+.agent-selector select:focus {
+  border-color: var(--accent);
+}
+.agent-selector select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clear-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.clear-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.clear-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* === Agent 空状态和思考中 === */
+.agent-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.agent-thinking {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  color: var(--text-secondary);
+}
+.thinking-dot {
+  font-size: 10px;
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes thinking-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
 .agent-tabs {
   display: flex;
   gap: 4px;
