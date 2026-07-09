@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FileNode } from "../types";
 
 interface FileTreeProps {
+  projectRoot: string;
   onFileSelect: (path: string) => void;
 }
 
@@ -34,23 +35,21 @@ function FileTreeNode({ node, depth, onFileSelect }: { node: FileNode; depth: nu
   );
 }
 
-export default function FileTree({ onFileSelect }: FileTreeProps) {
+export default function FileTree({ projectRoot, onFileSelect }: FileTreeProps) {
   const [tree, setTree] = useState<FileNode | null>(null);
 
   useEffect(() => {
-    // TODO: 通过 IPC 获取项目目录树
-    invoke<FileNode>("get_project_tree", {}).then(setTree).catch(console.error);
-  }, []);
+    invoke<FileNode>("get_project_tree", { path: projectRoot })
+      .then(setTree)
+      .catch(console.error);
+  }, [projectRoot]);
 
   return (
     <div className="file-tree">
-      <div className="file-tree-header">
-        <h3>项目文件</h3>
-      </div>
       {tree ? (
         <FileTreeNode node={tree} depth={0} onFileSelect={onFileSelect} />
       ) : (
-        <div className="file-tree-empty">未打开项目</div>
+        <div className="file-tree-empty">加载中...</div>
       )}
     </div>
   );

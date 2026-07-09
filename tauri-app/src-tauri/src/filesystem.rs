@@ -11,12 +11,32 @@ pub struct FileNode {
     pub children: Option<Vec<FileNode>>,
 }
 
-/// 获取项目目录树
+/// 获取项目目录树（指定路径）
 #[tauri::command]
-pub fn get_project_tree() -> Result<FileNode, String> {
-    // TODO: 从配置中读取项目根目录
-    let root = std::env::current_dir().map_err(|e| e.to_string())?;
+pub fn get_project_tree(path: Option<String>) -> Result<FileNode, String> {
+    let root = if let Some(p) = path {
+        PathBuf::from(p)
+    } else {
+        // 默认使用 ~/.moyan
+        dirs::home_dir()
+            .ok_or_else(|| "无法获取用户主目录".to_string())?
+            .join(".moyan")
+    };
+
+    if !root.exists() {
+        return Err(format!("目录不存在: {}", root.display()));
+    }
+
     build_tree(&root)
+}
+
+/// 打开目录选择对话框，返回选中的路径
+#[tauri::command]
+pub async fn open_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let folder = app.dialog().file().blocking_pick_folder();
+    Ok(folder.map(|f| f.to_string()))
 }
 
 /// 读取文件内容
@@ -29,6 +49,14 @@ pub fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, &content).map_err(|e| e.to_string())
+}
+
+/// 读取二进制文件为 base64（用于图片预览）
+#[tauri::command]
+pub fn read_file_base64(path: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 /// 递归构建目录树
