@@ -46,17 +46,13 @@ class OllamaClient(LLMAdapter):
             return {"error": "invalid_json", "raw": result}
 
     def is_available(self) -> bool:
-        """检查 Ollama 服务是否运行中"""
-        import asyncio
+        """检查 Ollama 服务是否运行中（同步检查，使用 urllib）"""
+        import urllib.request
+        import urllib.error
         try:
-            loop = asyncio.get_event_loop()
-            import aiohttp
-
-            async def check():
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{self.base_url}/api/tags") as resp:
-                        return resp.status == 200
-
-            return loop.run_until_complete(check())
-        except Exception:
+            req = urllib.request.Request(f"{self.base_url}/api/tags", method="GET")
+            req.add_header("User-Agent", "Moyan/0.1")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                return resp.status == 200
+        except (urllib.error.URLError, OSError, Exception):
             return False

@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback } from "react";
 export function useEditor(containerId: string) {
   const editorRef = useRef<unknown>(null);
 
-  const initEditor = useCallback((content: string) => {
+  const initEditor = useCallback((_content: string) => {
     const container = document.getElementById(containerId);
     if (!container) return;
 
@@ -20,7 +20,7 @@ export function useEditor(containerId: string) {
     // });
   }, [containerId]);
 
-  const setContent = useCallback((content: string) => {
+  const setContent = useCallback((_content: string) => {
     // TODO: editorRef.current?.setValue(content);
   }, []);
 
