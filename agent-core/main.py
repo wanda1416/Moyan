@@ -70,6 +70,19 @@ async def open_project(path: str):
     return {"status": "ok", "file_count": len(project_state.file_index)}
 
 
+@app.get("/api/config")
+async def get_config():
+    """获取当前 LLM 配置（API Key 掩码）"""
+    return settings.to_dict(mask_api_key=True)
+
+
+@app.post("/api/config")
+async def update_config(data: dict):
+    """更新 LLM 配置并持久化"""
+    settings.update_from_dict(data)
+    return {"status": "ok", "config": settings.to_dict(mask_api_key=True)}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket 端点 - Agent 通信"""
