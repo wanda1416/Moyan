@@ -36,23 +36,20 @@ export default function TitleBar({ onMenuAction }: TitleBarProps) {
     return () => { unlisten?.(); };
   }, [appWindow]);
 
-  // 原生 mousedown 监听：用于拖拽（绕过 React 合成事件）
+  // 原生 mousedown 监听：即时拖拽
   useEffect(() => {
     const el = titlebarRef.current;
     if (!el) return;
 
     const onMouseDown = (e: globalThis.MouseEvent) => {
-      // 只处理左键
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      // 排除按钮和菜单区域
-      if (target.closest(".win-btn") || target.closest(".menu-item")) return;
-      // 启动窗口拖拽
-      appWindow.startDragging().catch((err: unknown) => console.error("startDragging failed:", err));
+      if (target.closest('.win-btn') || target.closest('.menu-item')) return;
+      appWindow.startDragging().catch((err: unknown) => console.error('startDragging failed:', err));
     };
 
-    el.addEventListener("mousedown", onMouseDown);
-    return () => { el.removeEventListener("mousedown", onMouseDown); };
+    el.addEventListener('mousedown', onMouseDown);
+    return () => { el.removeEventListener('mousedown', onMouseDown); };
   }, [appWindow]);
 
   // 点击外部关闭菜单
