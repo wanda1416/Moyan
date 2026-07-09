@@ -8,6 +8,8 @@ interface LLMProviderEntry {
   api_key: string;
   base_url: string;
   model: string;
+  proxy: string;
+  use_proxy: boolean;
 }
 
 interface LLMConfig {
@@ -23,18 +25,21 @@ const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI / 兼容 API",
   claude: "Claude (Anthropic)",
   ollama: "Ollama (本地)",
+  gemini: "Gemini (Google)",
 };
 
 const DEFAULT_MODELS: Record<string, string> = {
   openai: "gpt-4o",
   claude: "claude-sonnet-4-20250514",
   ollama: "llama3",
+  gemini: "gemini-2.0-flash",
 };
 
 const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   claude: "",
   ollama: "http://localhost:11434",
+  gemini: "",
 };
 
 function genId() {
@@ -91,6 +96,8 @@ export default function Settings({ onClose }: SettingsProps) {
       api_key: "",
       base_url: "",
       model: "",
+      proxy: "",
+      use_proxy: false,
     };
     setProviders((prev) => [...prev, newEntry]);
     setEditingId(id);
@@ -276,6 +283,7 @@ export default function Settings({ onClose }: SettingsProps) {
                       <option value="openai">OpenAI / 兼容 API</option>
                       <option value="claude">Claude (Anthropic)</option>
                       <option value="ollama">Ollama (本地)</option>
+                      <option value="gemini">Gemini (Google)</option>
                     </select>
                   </div>
 
@@ -303,6 +311,25 @@ export default function Settings({ onClose }: SettingsProps) {
                         "自定义 API 地址"
                       }
                     />
+                  </div>
+
+                  <div className="settings-field">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={editing.use_proxy || false}
+                        onChange={(e) => updateEditing({ use_proxy: e.target.checked })}
+                      />
+                      使用 HTTP 代理
+                    </label>
+                    {editing.use_proxy && (
+                      <input
+                        type="text"
+                        value={editing.proxy || ""}
+                        onChange={(e) => updateEditing({ proxy: e.target.value })}
+                        placeholder="http://127.0.0.1:7890"
+                      />
+                    )}
                   </div>
 
                   <div className="settings-field">
@@ -351,7 +378,7 @@ export default function Settings({ onClose }: SettingsProps) {
             )}
 
             {message && (
-              <div className={`settings-message ${message.startsWith("✗") || message.includes("失败") ? "error" : message.startsWith("") ? "warning" : "success"}`}>
+              <div className={`settings-message ${message.startsWith("✗") || message.includes("失败") ? "error" : "success"}`}>
                 {message}
               </div>
             )}

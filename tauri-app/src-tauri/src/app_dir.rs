@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::io::Write;
+use chrono::Local;
 
 /// 获取 ~/.moyan 目录路径
 pub fn get_moyan_dir() -> Result<PathBuf, String> {
@@ -201,10 +204,14 @@ pub struct AppDirInfo {
 pub struct LLMProviderEntry {
     pub id: String,
     pub name: String,
-    pub provider: String,       // "openai" | "claude" | "ollama"
+    pub provider: String,       // "openai" | "claude" | "ollama" | "gemini"
     pub api_key: String,
     pub base_url: String,
     pub model: String,
+    #[serde(default)]
+    pub proxy: String,          // HTTP 代理地址，如 http://127.0.0.1:7890
+    #[serde(default)]
+    pub use_proxy: bool,        // 是否启用代理
 }
 
 /// LLM 配置结构（多供应商 + 激活项）
@@ -229,6 +236,8 @@ pub fn get_config() -> Result<LLMConfig, String> {
             api_key: String::new(),
             base_url: "https://api.openai.com/v1".to_string(),
             model: "gpt-4o".to_string(),
+            proxy: String::new(),
+            use_proxy: false,
         }],
     };
 
@@ -293,6 +302,8 @@ pub fn get_config() -> Result<LLMConfig, String> {
             },
             base_url: old_base_url.to_string(),
             model: old_model.to_string(),
+            proxy: String::new(),
+            use_proxy: false,
         });
     }
 
@@ -305,6 +316,8 @@ pub fn get_config() -> Result<LLMConfig, String> {
         api_key: String::new(),
         base_url: ollama_base_url.to_string(),
         model: ollama_model.to_string(),
+        proxy: String::new(),
+        use_proxy: false,
     });
 
     let active_id = if old_provider == "ollama" {
@@ -409,6 +422,8 @@ pub async fn test_llm_connection(entry: LLMProviderEntry) -> Result<String, Stri
         "provider": entry.provider,
         "model": entry.model,
         "base_url": entry.base_url,
+        "proxy": entry.proxy,
+        "use_proxy": entry.use_proxy,
     });
     if entry.api_key != "***" && !entry.api_key.is_empty() {
         payload["api_key"] = serde_json::Value::String(entry.api_key);
@@ -494,4 +509,31 @@ pub async fn list_models(entry: LLMProviderEntry) -> Result<Vec<String>, String>
         .unwrap_or_default();
 
     Ok(models)
+}
+
+/// 写入前端日志到文件
+#[tauri::command]
+pub fn write_log(level: String, message: String) -> Result<(), String> {
+    let moyan_dir = get_moyan_dir()?;
+    let log_dir = moyan_dir.join("logs");
+
+    // 确保日志目录存在
+    if !log_dir.exists() {
+        std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+    }
+
+    let log_file = log_dir.join("frontend.log");
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let log_line = format!("{} [{}] {}\n", timestamp, level, message);
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)
+        .map_err(|e| e.to_string())?;
+
+    file.write_all(log_line.as_bytes())
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }

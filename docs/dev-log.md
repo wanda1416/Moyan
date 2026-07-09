@@ -130,6 +130,26 @@
 - 成功提示颜色适配双主题：浅色主题深绿色 `#1a8a1a`，深色主题保持 `#a6e3a1`
 - 默认供应商增加绿色左边框视觉标识
 
+### 2026-07-10 对话架构简化与日志系统
+
+- 对话功能从 WebSocket + Agent 路由简化为 HTTP POST `/api/chat` 直接调用 LLM
+- 前端 `AgentPanel.tsx` 简化：移除 Agent 选择下拉，使用 `sendChat` HTTP 方法
+- 修复 React stale closure 问题：`useAgent.ts` 用 `messagesRef` 追踪最新消息
+- 新增文件日志系统：后端 `~/.moyan/logs/backend.log`（RotatingFileHandler），前端 `~/.moyan/logs/frontend.log`（Rust `write_log` 命令）
+- 新增 `useLogger.ts` hook，前端可调用 `info/warn/error` 记录日志
+- 健康检查从 5 秒轮询改为启动时检查一次
+- 清理所有 5 个 Agent 文件的重复类定义（Python 用最后一个定义，导致完整实现被骨架覆盖）
+
+### 2026-07-10 Gemini 原生 API 适配
+
+- 新增 `gemini_client.py`，使用 `google-genai` 新版 SDK（旧版 `google-generativeai` 已停止维护）
+- 消息格式使用 `types.Content` + `types.Part.from_text()` 构造（不能用字典，否则 Pydantic 校验失败）
+- `system_instruction` 单独提取到 `GenerateContentConfig`
+- 模型列表通过 `client.models.list()` 动态获取，筛选 `supported_actions` 包含 `generateContent` 的模型
+- 新增 HTTP 代理配置：供应商配置增加 `proxy` + `use_proxy` 字段，支持勾选是否启用代理
+- 代理设置通过环境变量 `HTTP_PROXY` / `HTTPS_PROXY` 注入
+- 设置页面新增 Gemini 下拉选项、HTTP 代理勾选框
+
 ---
 
 ## 架构决策

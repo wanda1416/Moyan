@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import type { AgentMessage, AgentRequest, AgentResponse, AgentType } from "../types";
 
 const WS_URL = "ws://localhost:8765/ws";
+const HTTP_URL = "http://localhost:8765";
 const MAX_RECONNECT_DELAY = 30000;
 
 interface PendingRequest {
@@ -19,6 +20,12 @@ export function useAgent() {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdCounterRef = useRef(0);
   const shouldConnectRef = useRef(false);
+  const messagesRef = useRef<AgentMessage[]>([]); // 用于追踪最新消息
+
+  // 同步 ref 和 state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // 生成唯一请求 ID
   const nextRequestId = useCallback(() => {
@@ -167,6 +174,65 @@ export function useAgent() {
     setMessages([]);
   }, []);
 
+  // 简单对话接口 - 直接调用 LLM
+  const sendChat = useCallback(
+    async (userMessage: string): Promise<string> => {
+      // 添加用户消息到列表
+      const userMsg: AgentMessage = {
+        role: "user",
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+
+      try {
+        // 使用 ref 获取最新消息历史
+        const currentMessages = messagesRef.current;
+        const chatMessages = [
+          ...currentMessages.map((m) => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.content,
+          })),
+          { role: "user", content: userMessage },
+        ];
+
+        const response = await fetch(`${HTTP_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: chatMessages }),
+        });
+
+        const data = await response.json();
+
+        if (data.status === "error") {
+          throw new Error(data.message);
+        }
+
+        const reply = data.reply || "";
+
+        // 添加 AI 回复到列表
+        const agentMsg: AgentMessage = {
+          role: "agent",
+          content: reply,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, agentMsg]);
+
+        return reply;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "未知错误";
+        const agentMsg: AgentMessage = {
+          role: "agent",
+          content: `错误: ${errorMsg}`,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, agentMsg]);
+        throw err;
+      }
+    },
+    [] // 不再依赖 messages，使用 ref
+  );
+
   // 组件卸载时断开连接
   useEffect(() => {
     return () => {
@@ -184,6 +250,7 @@ export function useAgent() {
     connect,
     disconnect,
     send,
+    sendChat,
     setCurrentFile,
     clearMessages,
   };

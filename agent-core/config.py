@@ -74,6 +74,14 @@ class Settings:
         return p.get("base_url", "")
 
     @property
+    def llm_proxy(self) -> str:
+        """向后兼容：返回激活供应商的 HTTP 代理（仅当启用代理时）"""
+        p = self.get_active_provider()
+        if p.get("use_proxy", False):
+            return p.get("proxy", "")
+        return ""
+
+    @property
     def ollama_base_url(self) -> str:
         """向后兼容：返回 Ollama 供应商的 Base URL"""
         for p in self.llm_providers:

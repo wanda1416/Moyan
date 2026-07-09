@@ -1,31 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAgent } from "../hooks/useAgent";
+import { useLogger } from "../hooks/useLogger";
 import ChatMessage from "./ChatMessage";
-import type { AgentType } from "../types";
 
 interface AgentPanelProps {
   currentFile: string | null;
 }
 
-const AGENT_LABELS: Record<AgentType, string> = {
-  lore_keeper: "设定顾问",
-  beat_maker: "节拍师",
-  scribe: "写手",
-  guardian: "守夜人",
-  foreshadowing_clerk: "伏笔官",
-};
-
 export default function AgentPanel({ currentFile }: AgentPanelProps) {
-  const { messages, connected, connect, disconnect, send, setCurrentFile, clearMessages } = useAgent();
+  const { messages, connected, connect, disconnect, sendChat, setCurrentFile, clearMessages } = useAgent();
+  const logger = useLogger();
   const [input, setInput] = useState("");
   const [pythonOnline, setPythonOnline] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<AgentType>("lore_keeper");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevFileRef = useRef<string | null>(null);
 
-  // 轮询 Python HTTP 健康检查
+  // 启动时检查 Python 状态
   const checkHttpHealth = useCallback(async () => {
     try {
       const ok = await invoke<boolean>("python_health_check");
@@ -37,11 +29,9 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
 
   useEffect(() => {
     checkHttpHealth();
-    const timer = setInterval(checkHttpHealth, 5000);
-    return () => clearInterval(timer);
   }, [checkHttpHealth]);
 
-  // Python 在线时自动连接 WebSocket
+  // Python 在线时自动连接 WebSocket（用于未来的 Agent 功能）
   useEffect(() => {
     if (pythonOnline && !connected) {
       connect();
@@ -50,7 +40,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
     }
   }, [pythonOnline, connected, connect, disconnect]);
 
-  // 文件变化时通知 Python 并获取关联文件
+  // 文件变化时通知 Python
   useEffect(() => {
     if (currentFile === prevFileRef.current) return;
     prevFileRef.current = currentFile;
@@ -59,16 +49,6 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
       setCurrentFile(currentFile);
     }
   }, [currentFile, connected, setCurrentFile]);
-
-  // 监听 set_current_file 响应中的关联文件
-  useEffect(() => {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg?.agent_type === undefined && lastMsg?.content?.startsWith("当前文件:")) {
-      // 这是 set_current_file 的响应，关联文件已通过 structured_data 返回
-      // 但 useAgent 目前只传递 content/references，references 已包含在 AgentMessage 中
-      // 这里暂时不处理，后续可扩展
-    }
-  }, [messages]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -81,45 +61,38 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
     if (pythonOnline) connect();
   };
 
-  // 发送消息
+  // 发送消息 - 直接调用 LLM
   const handleSend = async () => {
-    if (!input.trim() || !connected || sending) return;
+    if (!input.trim() || !pythonOnline || sending) return;
 
-    const question = input.trim();
+    const message = input.trim();
     setInput("");
     setSending(true);
+    logger.info(`发送消息: ${message.slice(0, 50)}${message.length > 50 ? "..." : ""}`);
 
     try {
-      await send({
-        action: "query",
-        agent_type: selectedAgent,
-        payload: { question, file_path: currentFile },
-      });
+      await sendChat(message);
+      logger.info("收到 LLM 回复");
     } catch (err) {
-      // 错误消息已由 useAgent 处理
+      const errorMsg = err instanceof Error ? err.message : "未知错误";
+      logger.error(`发送失败: ${errorMsg}`);
       console.error("发送失败:", err);
     } finally {
       setSending(false);
     }
   };
 
-  const statusText = !pythonOnline
-    ? "后端离线"
-    : connected
-    ? "已连接"
-    : "连接中...";
-
-  const statusConnected = pythonOnline && connected;
+  const statusText = !pythonOnline ? "后端离线" : "已连接";
 
   return (
     <div className="agent-panel-inner">
       <div className="agent-header">
         <div className="agent-header-top">
-          <h3>Agent 助手</h3>
+          <h3>AI 助手</h3>
           <div className="python-status-indicator" title={statusText}>
-            <span className={`status-dot ${statusConnected ? "connected" : "disconnected"}`} />
+            <span className={`status-dot ${pythonOnline ? "connected" : "disconnected"}`} />
             <span className="status-text">{statusText}</span>
-            {!statusConnected && (
+            {!pythonOnline && (
               <button className="reconnect-btn" onClick={handleReconnect} title="重连">
                 ↻
               </button>
@@ -131,19 +104,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
           <button className="agent-tab">设定</button>
           <button className="agent-tab">伏笔</button>
         </div>
-        {/* Agent 类型选择 */}
         <div className="agent-selector">
-          <select
-            value={selectedAgent}
-            onChange={(e) => setSelectedAgent(e.target.value as AgentType)}
-            disabled={!connected}
-          >
-            {(Object.entries(AGENT_LABELS) as [AgentType, string][]).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
           <button
             className="clear-btn"
             onClick={clearMessages}
@@ -157,11 +118,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
       <div className="agent-messages">
         {messages.length === 0 && (
           <div className="agent-empty">
-            {connected
-              ? `已连接 · ${AGENT_LABELS[selectedAgent]}就绪`
-              : pythonOnline
-              ? "正在连接 WebSocket..."
-              : "等待 Python 后端启动..."}
+            {pythonOnline ? "已连接 · 就绪" : "等待后端启动..."}
           </div>
         )}
         {messages.map((msg, i) => (
@@ -181,15 +138,9 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={
-            !pythonOnline
-              ? "等待后端启动..."
-              : !connected
-              ? "连接中..."
-              : !currentFile
-              ? "请先打开一个文件"
-              : `向${AGENT_LABELS[selectedAgent]}提问...`
+            !pythonOnline ? "等待后端启动..." : "输入消息..."
           }
-          disabled={!currentFile || !connected || sending}
+          disabled={!pythonOnline || sending}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -199,7 +150,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
         />
         <button
           onClick={handleSend}
-          disabled={!currentFile || !input.trim() || !connected || sending}
+          disabled={!input.trim() || !pythonOnline || sending}
         >
           {sending ? "..." : "发送"}
         </button>

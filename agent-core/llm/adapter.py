@@ -55,5 +55,8 @@ def create_adapter(provider: str, **kwargs) -> LLMAdapter:
     elif provider == "ollama":
         from llm.ollama_client import OllamaClient
         return OllamaClient(**kwargs)
+    elif provider == "gemini":
+        from llm.gemini_client import GeminiClient
+        return GeminiClient(**kwargs)
     else:
         raise ValueError(f"不支持的 LLM provider: {provider}")

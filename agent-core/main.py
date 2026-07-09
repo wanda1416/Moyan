@@ -7,15 +7,39 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import settings
+from config import settings, get_moyan_dir
 from core.state import ProjectState
 from agents import get_dispatcher
 from memory.db import Database
 
+
+def setup_logging():
+    """配置文件日志"""
+    log_dir = get_moyan_dir() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    file_handler = RotatingFileHandler(
+        log_dir / "backend.log",
+        maxBytes=5 * 1024 * 1024,  # 5MB
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+
+    # 同时输出到控制台和文件
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+
+
+setup_logging()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -94,6 +118,7 @@ async def test_llm(data: dict):
     api_key = data.get("api_key", "")
     model = data.get("model", "")
     base_url = data.get("base_url", "")
+    proxy = data.get("proxy", "") if data.get("use_proxy", False) else ""
 
     if not provider:
         return {"status": "error", "message": "缺少 provider 参数"}
@@ -107,6 +132,7 @@ async def test_llm(data: dict):
                 api_key=api_key,
                 model=model,
                 base_url=base_url,
+                proxy=proxy,
             )
 
         # 发送一个极简请求测试连接
@@ -153,6 +179,30 @@ async def list_models(data: dict):
                 ],
             }
 
+        elif provider == "gemini":
+            # Gemini: 使用新 SDK 动态获取模型列表
+            import os
+            proxy = data.get("proxy", "")
+            use_proxy = data.get("use_proxy", False)
+            
+            # 设置代理环境变量
+            if use_proxy and proxy:
+                os.environ["HTTP_PROXY"] = proxy
+                os.environ["HTTPS_PROXY"] = proxy
+            
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            
+            models = []
+            for model in client.models.list():
+                # 筛选支持内容生成的模型
+                if hasattr(model, "supported_actions") and "generateContent" in model.supported_actions:
+                    # 模型名称格式: models/gemini-2.0-flash -> gemini-2.0-flash
+                    name = model.name.replace("models/", "")
+                    models.append(name)
+            
+            return {"status": "ok", "models": models}
+
         else:
             # OpenAI / 兼容 API: GET /v1/models
             url = base_url or "https://api.openai.com/v1"
@@ -166,6 +216,46 @@ async def list_models(data: dict):
 
     except Exception as e:
         return {"status": "error", "message": f"获取模型列表失败: {str(e)}"}
+
+
+@app.post("/api/chat")
+async def chat(request: Request):
+    """简单对话接口 - 直接调用 LLM"""
+    try:
+        body = await request.json()
+        messages = body.get("messages", [])
+
+        if not messages:
+            return {"status": "error", "message": "缺少 messages 参数"}
+
+        logger.info(f"收到对话请求，{len(messages)} 条消息")
+
+        # 创建 LLM 适配器
+        from llm.adapter import create_adapter, LLMMessage
+
+        llm = create_adapter(
+            settings.llm_provider,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+            proxy=settings.llm_proxy,
+        )
+
+        if not llm.is_available():
+            return {"status": "error", "message": f"LLM 服务不可用，请检查配置"}
+
+        # 转换消息格式
+        llm_messages = [LLMMessage(m["role"], m["content"]) for m in messages]
+
+        # 调用 LLM
+        reply = await llm.chat(llm_messages)
+        logger.info(f"LLM 回复成功，长度: {len(reply)}")
+
+        return {"status": "ok", "reply": reply}
+
+    except Exception as e:
+        logger.error(f"对话失败: {e}")
+        return {"status": "error", "message": f"对话失败: {str(e)}"}
 
 
 @app.websocket("/ws")
@@ -240,14 +330,15 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             # 自动注入当前文件上下文
-            if current_file and "file_path" not in request:
-                request["file_path"] = current_file
+            payload = request.get("payload", {})
+            if current_file and "file_path" not in payload:
+                payload["file_path"] = current_file
 
             # 调度到对应 Agent
             result = await dispatcher.dispatch(
                 agent_type=agent_type,
                 action=action,
-                payload=request,
+                payload=payload,
                 project_state=project_state,
             )
             result["request_id"] = request_id
