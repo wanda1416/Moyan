@@ -1,0 +1,275 @@
+:root {
+  --sidebar-width: 260px;
+  --agent-panel-width: 340px;
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-surface: #313244;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --accent: #89b4fa;
+  --border: #45475a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.editor-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-panel {
+  width: var(--agent-panel-width);
+  min-width: var(--agent-panel-width);
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+
+/* === 文件树 === */
+.file-tree-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.file-tree-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.file-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+  user-select: none;
+}
+.file-tree-node:hover {
+  background: var(--bg-surface);
+}
+.file-tree-node .icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.file-tree-node .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tree-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* === 编辑器 === */
+.editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.editor-tab {
+  padding: 8px 16px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.editor-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* === Agent 面板 === */
+.agent-panel-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.agent-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.agent-tabs {
+  display: flex;
+  gap: 4px;
+}
+.agent-tab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.agent-tab.active {
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-color: var(--accent);
+}
+.agent-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.agent-input-area {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+}
+.agent-input-area textarea {
+  flex: 1;
+  resize: none;
+  height: 60px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.agent-input-area textarea:focus {
+  border-color: var(--accent);
+}
+.agent-input-area button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+.agent-input-area button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* === 对话气泡 === */
+.chat-message {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.chat-message.user {
+  flex-direction: row-reverse;
+}
+.chat-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.chat-content {
+  max-width: 80%;
+}
+.chat-text {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg-surface);
+}
+.chat-message.user .chat-text {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.chat-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* === 伏笔提醒 === */
+.foreshadowing-alert {
+  margin: 8px 12px;
+  border: 1px solid #f9e2af;
+  border-radius: 6px;
+  background: rgba(249, 226, 175, 0.1);
+}
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f9e2af;
+}
+.alert-list {
+  list-style: none;
+  padding: 0 12px 8px;
+}
+.alert-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-top: 1px solid rgba(249, 226, 175, 0.2);
+}
+.alert-id {
+  color: var(--accent);
+  font-weight: 600;
+}
+.alert-desc {
+  color: var(--text-primary);
+}
+.alert-source {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
