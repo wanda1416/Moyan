@@ -1,9 +1,10 @@
 [package]
 name = "novel-agent"
 version = "0.1.0"
-description = "AI 小说协作桌面应用"
+description = "墨言 - AI 小说协作桌面应用"
 authors = ["you"]
 edition = "2021"
+license = "AGPL-3.0-only WITH Non-Commercial Restriction"
 
 [lib]
 name = "novel_agent_lib"
