@@ -1026,6 +1026,11 @@ html, body, #root {
   margin-bottom: 12px;
 }
 .settings-message.success {
+  background: rgba(34, 139, 34, 0.08);
+  color: #1a8a1a;
+  border: 1px solid rgba(34, 139, 34, 0.2);
+}
+[data-theme="dark"] .settings-message.success {
   background: rgba(166, 227, 161, 0.1);
   color: #a6e3a1;
   border: 1px solid rgba(166, 227, 161, 0.2);
@@ -1124,6 +1129,10 @@ html, body, #root {
 .provider-list-item.selected {
   background: var(--accent);
   color: var(--bg-primary);
+}
+.provider-list-item.active:not(.selected) {
+  background: var(--bg-surface);
+  border-left: 3px solid #a6e3a1;
 }
 .provider-list-item.selected .provider-item-type {
   color: rgba(255, 255, 255, 0.7);
@@ -1224,16 +1233,17 @@ html, body, #root {
 }
 .btn-activate {
   padding: 8px 16px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
   border-radius: 6px;
-  background: var(--bg-surface);
-  color: var(--text-primary);
+  background: transparent;
+  color: var(--accent);
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   margin-bottom: 12px;
   transition: all 0.15s;
 }
 .btn-activate:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--accent);
+  color: var(--bg-primary);
 }

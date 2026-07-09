@@ -233,24 +233,6 @@ impl PythonBridge {
         Ok(())
     }
 
-    /// 检查 Python 服务是否存活（供前端命令调用）
-    pub async fn health_check_async(&self) -> bool {
-        let url = format!(
-            "http://{}:{}/health",
-            self.config.host, self.config.port
-        );
-        match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(3))
-            .build()
-        {
-            Ok(client) => match client.get(&url).send().await {
-                Ok(resp) => resp.status().is_success(),
-                Err(_) => false,
-            },
-            Err(_) => false,
-        }
-    }
-
     /// 关闭 Python 进程
     pub fn stop(&self) -> Result<String, String> {
         let pid = PYTHON_PID.load(Ordering::SeqCst);

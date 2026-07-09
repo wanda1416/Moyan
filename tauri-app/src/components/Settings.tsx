@@ -37,9 +37,8 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   ollama: "http://localhost:11434",
 };
 
-let idCounter = 2;
 function genId() {
-  return `provider_${idCounter++}`;
+  return `provider_${crypto.randomUUID().slice(0, 8)}`;
 }
 
 export default function Settings({ onClose }: SettingsProps) {
@@ -90,8 +89,8 @@ export default function Settings({ onClose }: SettingsProps) {
       name: "新供应商",
       provider: "openai",
       api_key: "",
-      base_url: DEFAULT_BASE_URLS.openai,
-      model: DEFAULT_MODELS.openai,
+      base_url: "",
+      model: "",
     };
     setProviders((prev) => [...prev, newEntry]);
     setEditingId(id);
@@ -99,9 +98,13 @@ export default function Settings({ onClose }: SettingsProps) {
     setMessage("");
   };
 
-  // 删除供应商
+  // 删除供应商（需确认）
   const handleDelete = (id: string) => {
     if (providers.length <= 1) return;
+    const provider = providers.find((p) => p.id === id);
+    if (!provider) return;
+    if (!confirm(`确定要删除「${provider.name}」吗？`)) return;
+
     setProviders((prev) => prev.filter((p) => p.id !== id));
     if (editingId === id) {
       const remaining = providers.filter((p) => p.id !== id);
@@ -232,7 +235,7 @@ export default function Settings({ onClose }: SettingsProps) {
                         className="provider-delete-btn"
                         onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
                         title="删除"
-                      ></button>
+                      >✕</button>
                     )}
                   </div>
                 </div>
@@ -264,8 +267,8 @@ export default function Settings({ onClose }: SettingsProps) {
                         const newProvider = e.target.value;
                         updateEditing({
                           provider: newProvider,
-                          base_url: editing.base_url || DEFAULT_BASE_URLS[newProvider] || "",
-                          model: editing.model || DEFAULT_MODELS[newProvider] || "",
+                          base_url: DEFAULT_BASE_URLS[newProvider] || "",
+                          model: DEFAULT_MODELS[newProvider] || "",
                         });
                         setAvailableModels([]);
                       }}
