@@ -192,6 +192,89 @@ html, body, #root {
   color: #fff;
 }
 
+/* === 更新提示气泡（标题栏右侧） === */
+.titlebar-update-area {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+.update-bubble {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 26px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-radius: 13px;
+  padding: 0 2px 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px var(--shadow);
+  animation: update-bubble-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-app-region: no-drag;
+}
+@keyframes update-bubble-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.update-bubble-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 8px 0 4px;
+  height: 100%;
+  border-radius: 13px 0 0 13px;
+  -webkit-app-region: no-drag;
+}
+.update-bubble-action:hover {
+  filter: brightness(1.08);
+}
+.update-bubble-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6);
+  animation: update-bubble-pulse 1.6s infinite;
+}
+@keyframes update-bubble-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
+}
+.update-bubble-text {
+  white-space: nowrap;
+  user-select: none;
+}
+.update-bubble-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  -webkit-app-region: no-drag;
+}
+.update-bubble-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.18);
+}
+
 .sidebar {
   background: var(--bg-secondary);
   overflow-y: auto;
@@ -1417,6 +1500,41 @@ html, body, #root {
 .settings-panel-wide {
   width: 100%;
   height: 100%;
+}
+
+/* === 关于 Tab === */
+.settings-about-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.settings-version-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.settings-version-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+}
+.settings-about-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 .settings-body-split {
   display: flex;

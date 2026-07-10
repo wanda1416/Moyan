@@ -1,6 +1,7 @@
 mod app_dir;
 mod filesystem;
 mod python_bridge;
+mod updater;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -15,15 +16,27 @@ use app_dir::{
     write_log,
 };
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64};
-use python_bridge::{PythonBridge, PythonConfig, start_python, stop_python, python_health_check, python_status};
+use python_bridge::{PythonBridge, PythonConfig, LaunchMode, start_python, stop_python, python_health_check, python_status};
+use updater::{check_update, app_version};
+
+/// 根据编译模式选择 Python 启动方式
+/// - dev 模式：使用 venv 中的 python main.py
+/// - release 模式：使用打包好的 sidecar 二进制
+fn select_launch_mode() -> LaunchMode {
+    if cfg!(debug_assertions) {
+        LaunchMode::Dev
+    } else {
+        LaunchMode::Sidecar
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 启动时初始化 ~/.moyan 目录
     let _ = app_dir::init_app_dir();
 
-    // 创建 PythonBridge 实例
-    let bridge = PythonBridge::new(PythonConfig::default());
+    // 创建 PythonBridge 实例（根据编译模式选择 dev / sidecar）
+    let bridge = PythonBridge::with_mode(PythonConfig::default(), select_launch_mode());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -69,6 +82,9 @@ pub fn run() {
             save_config,
             test_llm_connection,
             list_models,
+            // 更新检测
+            check_update,
+            app_version,
             // 日志
             write_log,
         ])

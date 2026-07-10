@@ -356,13 +356,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
+    import argparse
     import uvicorn
+
+    # 命令行参数（sidecar 模式由 Tauri 注入；dev 模式无参走默认）
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=settings.host, help="绑定地址")
+    parser.add_argument("--port", type=int, default=settings.port, help="绑定端口")
+    args = parser.parse_args()
 
     # reload=False: 进程生命周期由 Tauri PythonBridge 管理，不需要 uvicorn 自己监控文件变化
     # 直接传 app 对象而非字符串，避免 Windows 下 multiprocessing spawn 产生多余进程
     uvicorn.run(
         app,
-        host=settings.host,
-        port=settings.port,
+        host=args.host,
+        port=args.port,
         reload=False,
     )

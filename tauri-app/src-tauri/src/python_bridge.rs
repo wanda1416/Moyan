@@ -2,6 +2,15 @@ use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
+/// 启动模式：开发态使用 venv 中的 Python，发布态使用 sidecar
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LaunchMode {
+    /// 使用 agent-core/.venv 中的 python main.py
+    Dev,
+    /// 使用打包好的 sidecar 可执行文件
+    Sidecar,
+}
+
 /// Python 进程配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PythonConfig {
@@ -25,14 +34,16 @@ impl Default for PythonConfig {
 /// Python 进程管理器
 pub struct PythonBridge {
     config: PythonConfig,
+    mode: LaunchMode,
 }
 
 /// 全局 PID 存储（用于应用退出时清理）
 static PYTHON_PID: AtomicU32 = AtomicU32::new(0);
 
 impl PythonBridge {
-    pub fn new(config: PythonConfig) -> Self {
-        Self { config }
+    /// 创建 PythonBridge，指定启动模式（推荐入口）
+    pub fn with_mode(config: PythonConfig, mode: LaunchMode) -> Self {
+        Self { config, mode }
     }
 
     /// 定位 Python 解释器路径
@@ -119,16 +130,28 @@ impl PythonBridge {
         // 检查端口是否已被占用
         self.check_port_available()?;
 
+        match self.mode {
+            LaunchMode::Dev => self.start_dev(),
+            LaunchMode::Sidecar => self.start_sidecar(),
+        }
+    }
+
+    /// 开发态：使用 venv 中的 python main.py
+    fn start_dev(&self) -> Result<String, String> {
         let python_path = self.resolve_python_path();
         let agent_dir = self
             .find_agent_core_dir()
             .ok_or_else(|| "找不到 agent-core 目录，请确认项目结构完整".to_string())?;
 
-        eprintln!("[PythonBridge] Python 路径: {}", &python_path);
-        eprintln!("[PythonBridge] agent-core: {}", agent_dir.display());
+        eprintln!("[PythonBridge] [dev] Python 路径: {}", &python_path);
+        eprintln!("[PythonBridge] [dev] agent-core: {}", agent_dir.display());
 
         let child = std::process::Command::new(&python_path)
             .arg("main.py")
+            .arg("--host")
+            .arg(&self.config.host)
+            .arg("--port")
+            .arg(self.config.port.to_string())
             .current_dir(&agent_dir)
             .stdin(std::process::Stdio::null())
             // stdout/stderr 继承父进程，直接输出到控制台
@@ -145,6 +168,88 @@ impl PythonBridge {
         Ok(format!(
             "Python 进程已启动 (PID: {})，等待后端就绪...", pid
         ))
+    }
+
+    /// 发布态：使用打包好的 sidecar 可执行文件
+    /// 通过 Tauri App handle 的 resource_dir 定位 sidecar 二进制
+    fn start_sidecar(&self) -> Result<String, String> {
+        // 通过全局 PYTHON_PID 判断是否已启动（避免重复启动）
+        let existing_pid = PYTHON_PID.load(Ordering::SeqCst);
+        if existing_pid > 0 && is_process_alive(existing_pid) {
+            return Ok(format!("Python 进程已在运行 (PID: {})", existing_pid));
+        }
+
+        let sidecar_path = self
+            .resolve_sidecar_path()
+            .ok_or_else(|| "找不到 sidecar 可执行文件 (moyan-backend)".to_string())?;
+
+        eprintln!("[PythonBridge] [sidecar] 路径: {}", sidecar_path.display());
+
+        let child = std::process::Command::new(sidecar_path.as_os_str())
+            .arg("--host")
+            .arg(&self.config.host)
+            .arg("--port")
+            .arg(self.config.port.to_string())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .map_err(|e| {
+                format!(
+                    "启动 sidecar 失败 (路径: {}): {}",
+                    sidecar_path.display(),
+                    e
+                )
+            })?;
+
+        let pid = child.id();
+        PYTHON_PID.store(pid, Ordering::SeqCst);
+
+        Ok(format!(
+            "Sidecar 进程已启动 (PID: {})，等待后端就绪...",
+            pid
+        ))
+    }
+
+    /// 定位 sidecar 可执行文件路径
+    /// 优先级：
+    ///   1. 相对于当前可执行文件的同目录（PyInstaller 场景通常就在这里）
+    ///   2. 资源目录的 binaries 子目录（Tauri sidecar 解析规则）
+    fn resolve_sidecar_path(&self) -> Option<std::path::PathBuf> {
+        let exe_name = if cfg!(target_os = "windows") {
+            "moyan-backend.exe"
+        } else {
+            "moyan-backend"
+        };
+
+        // 1. 相对于当前可执行文件同目录
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let candidate = dir.join(exe_name);
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+                // Tauri 把 sidecar 放在 resources/binaries/
+                let res = dir.join("resources").join("binaries").join(exe_name);
+                if res.exists() {
+                    return Some(res);
+                }
+            }
+        }
+
+        // 2. 当前工作目录下的 resources/binaries/
+        if let Ok(cwd) = std::env::current_dir() {
+            let res = cwd.join("resources").join("binaries").join(exe_name);
+            if res.exists() {
+                return Some(res);
+            }
+            let cwd_direct = cwd.join(exe_name);
+            if cwd_direct.exists() {
+                return Some(cwd_direct);
+            }
+        }
+
+        None
     }
 
     /// 启动并等待就绪（阻塞式，用于 setup 阶段的后台线程）
@@ -253,14 +358,28 @@ impl PythonBridge {
     /// 获取当前状态信息
     pub fn get_status(&self) -> PythonStatus {
         let pid = PYTHON_PID.load(Ordering::SeqCst);
+        let (python_path, agent_core_path) = match self.mode {
+            LaunchMode::Dev => (
+                self.resolve_python_path(),
+                self.find_agent_core_dir().map(|p| p.to_string_lossy().to_string()),
+            ),
+            LaunchMode::Sidecar => (
+                self.resolve_sidecar_path()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "sidecar: moyan-backend".to_string()),
+                None,
+            ),
+        };
         PythonStatus {
             pid: if pid > 0 { Some(pid) } else { None },
             host: self.config.host.clone(),
             port: self.config.port,
-            python_path: self.resolve_python_path(),
-            agent_core_path: self
-                .find_agent_core_dir()
-                .map(|p| p.to_string_lossy().to_string()),
+            python_path,
+            agent_core_path,
+            mode: match self.mode {
+                LaunchMode::Dev => "dev".to_string(),
+                LaunchMode::Sidecar => "sidecar".to_string(),
+            },
         }
     }
 }
@@ -318,6 +437,8 @@ pub struct PythonStatus {
     pub port: u16,
     pub python_path: String,
     pub agent_core_path: Option<String>,
+    /// 启动模式：dev | sidecar
+    pub mode: String,
 }
 
 // ─── Tauri 命令 ────────────────────────────────────────────

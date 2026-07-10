@@ -1,5 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
+
+/** 后端 updater.rs 返回的更新信息结构 */
+interface UpdateInfo {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_url: string;
+  release_notes: string;
+  published_at: string;
+}
 
 interface LLMProviderEntry {
   id: string;
@@ -31,6 +42,8 @@ interface SettingsProps {
   onDirtyChange: (dirty: boolean) => void;
   /** 注册应用函数（供外部触发，如关闭确认对话框的"保存"按钮） */
   registerApply?: (fn: () => Promise<boolean>) => void;
+  /** 初始选中的 Tab（默认 editor） */
+  initialTab?: "editor" | "llm" | "about";
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -66,8 +79,14 @@ function genId() {
   return `provider_${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange, registerApply }: SettingsProps) {
-  const [activeTab, setActiveTab] = useState<"editor" | "llm">("editor");
+export default function Settings({
+  appliedSettings,
+  onApplyEditor,
+  onDirtyChange,
+  registerApply,
+  initialTab = "editor",
+}: SettingsProps) {
+  const [activeTab, setActiveTab] = useState<"editor" | "llm" | "about">(initialTab);
 
   // 编辑器设置（未保存的工作副本）
   const [editorSettings, setEditorSettings] = useState<EditorSettings>(appliedSettings);
@@ -83,6 +102,12 @@ export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [testing, setTesting] = useState(false);
+
+  // 关于页
+  const [currentVersion, setCurrentVersion] = useState("");
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
 
   // 已保存的 LLM 配置快照（用于检测变更）
   const llmSnapshotRef = useRef<string>("");
@@ -118,6 +143,42 @@ export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
+
+  // 加载当前应用版本（仅一次）
+  useEffect(() => {
+    invoke<string>("app_version")
+      .then((v) => setCurrentVersion(v))
+      .catch((err) => console.warn("获取应用版本失败:", err));
+  }, []);
+
+  // 手动检查更新
+  const handleCheckUpdate = useCallback(async () => {
+    setCheckingUpdate(true);
+    setUpdateMessage("");
+    setUpdateInfo(null);
+    try {
+      const info = await invoke<UpdateInfo>("check_update");
+      setUpdateInfo(info);
+      if (info.has_update) {
+        setUpdateMessage(`✓ 发现新版本 v${info.latest_version}`);
+      } else {
+        setUpdateMessage("✓ 已是最新版本");
+      }
+    } catch (err) {
+      setUpdateMessage(`✗ 检查失败: ${err}`);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }, []);
+
+  // 打开 release 页面
+  const handleOpenRelease = useCallback(async (url: string) => {
+    try {
+      await openExternal(url);
+    } catch (err) {
+      console.error("打开链接失败:", err);
+    }
+  }, []);
 
   // 保存编辑器设置（点击应用按钮时调用）
   const applyEditorSettings = useCallback(async () => {
@@ -304,6 +365,12 @@ export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange
             onClick={() => setActiveTab("llm")}
           >
             LLM 供应商
+          </button>
+          <button
+            className={`settings-tab${activeTab === "about" ? " active" : ""}`}
+            onClick={() => setActiveTab("about")}
+          >
+            关于
           </button>
         </div>
 
@@ -527,6 +594,71 @@ export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange
                   {saving ? "保存中..." : "保存"}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 关于 Tab */}
+        {activeTab === "about" && (
+          <div className="settings-body">
+            <div className="settings-section">
+              <h3>墨言</h3>
+              <p className="settings-about-desc">
+                AI 小说协作桌面应用。使用 LLM Agent 帮你持续追踪人物、世界观、伏笔和剧情节拍。
+              </p>
+            </div>
+
+            <div className="settings-section">
+              <h3>版本信息</h3>
+              <div className="settings-field">
+                <label>当前版本</label>
+                <div className="settings-version-value">v{currentVersion || "..."}</div>
+              </div>
+              {updateInfo && (
+                <div className="settings-field">
+                  <label>最新版本</label>
+                  <div className="settings-version-value">
+                    v{updateInfo.latest_version}
+                    {updateInfo.has_update && (
+                      <span className="settings-version-badge">有可用更新</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="settings-section">
+              <h3>检查更新</h3>
+              <div className="settings-about-actions">
+                <button
+                  className="btn-primary"
+                  onClick={handleCheckUpdate}
+                  disabled={checkingUpdate}
+                >
+                  {checkingUpdate ? "检查中..." : "检查更新"}
+                </button>
+                {updateInfo?.has_update && updateInfo.release_url && (
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleOpenRelease(updateInfo.release_url)}
+                  >
+                    前往下载页
+                  </button>
+                )}
+              </div>
+              {updateMessage && (
+                <div className={`settings-message ${updateMessage.startsWith("✗") ? "error" : "success"}`}>
+                  {updateMessage}
+                </div>
+              )}
+            </div>
+
+            <div className="settings-section">
+              <h3>许可协议</h3>
+              <p className="settings-about-desc">
+                AGPL-3.0-only WITH Non-Commercial Restriction<br />
+                本仓库仅供非商业使用。
+              </p>
             </div>
           </div>
         )}

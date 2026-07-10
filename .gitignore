@@ -10,6 +10,7 @@ dist/
 # IDE
 .vscode/
 .idea/
+.qoder/
 *.swp
 *.swo
 
@@ -26,7 +27,11 @@ Thumbs.db
 
 # Tauri
 tauri-app/src-tauri/gen/
+tauri-app/src-tauri/binaries/
+tauri-app/src-tauri/target/
 
 # Python
 *.pyc
 *.pyo
+agent-core/build/
+agent-core/dist/

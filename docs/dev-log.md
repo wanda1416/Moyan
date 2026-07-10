@@ -175,6 +175,37 @@
 - "+ 新对话" 按钮创建空白会话（自动保存当前会话后切换）
 - 移除"清空当前对话"按钮，避免数据丢失
 
+### 2026-07-10 打包发布系统与 Sidecar 双模式启动
+
+- 新增 PyInstaller 打包配置 `agent-core/moyan-backend.spec`，将 Python 后端打包为独立可执行文件
+- `python_bridge.rs` 引入 `LaunchMode` 枚举（`Dev` / `Sidecar`），根据编译模式自动选择启动方式
+  - Dev 模式：使用 venv 中的 `python main.py`，通过 `--host` / `--port` 命令行参数传地址
+  - Sidecar 模式：使用打包好的 `moyan-backend` 二进制，路径按优先级自动定位（exe 同目录 → resources/binaries → 工作目录）
+- `agent-core/main.py` 新增 `argparse` 解析 `--host` / `--port`，兼容 sidecar 注入与 dev 默认值
+- `build.rs` 新增 GitHub 远端解析逻辑：从 `git remote get-url origin` 提取 owner/repo，作为编译期常量注入 `updater.rs`，支持环境变量 `MOYAN_GITHUB_OWNER` / `MOYAN_GITHUB_REPO` 覆盖
+- `tauri.conf.json` 配置 `externalBin` 指向 `binaries/moyan-backend`，bundle targets 明确为 `nsis` / `app` / `dmg`
+- 新增跨平台构建脚本：
+  - `build.bat` / `build.sh`：一键执行 Python 打包 → sidecar 拷贝 → tauri build → 产物归集
+  - `scripts/build-backend.bat/sh`：PyInstaller 打包 Python 后端
+  - `scripts/build-frontend.bat/sh`：独立前端构建
+  - `scripts/copy-sidecar.bat/sh`：按平台 triple 拷贝 sidecar 到 Tauri binaries 目录
+  - `scripts/collect-artifacts.bat/sh`：从 Tauri target 目录归集最终安装包到 `dist/`
+- `docs/build-guide.md`：完整的打包发布指南文档
+- `.gitignore` 新增 `.qoder/`、`tauri-app/src-tauri/binaries/`、`tauri-app/src-tauri/target/` 忽略规则
+
+### 2026-07-10 应用更新检测与关于页面
+
+- 新增 `updater.rs`：通过 GitHub Releases API 检查新版本，包含 SemVer 比较、draft/prerelease 过滤
+- 启动 3 秒后异步检查更新，不阻塞 UI，失败静默
+- 标题栏右侧新增更新提示气泡：脉冲动画圆点 + 版本号，点击打开浏览器跳转 release 页面，✕ 按钮关闭（本次会话不再弹）
+- 设置页面新增"关于"Tab：
+  - 应用简介、当前版本号（等宽字体 + 绿色 badge）
+  - 手动检查更新按钮 + 最新版本显示 + "前往下载页"按钮
+  - 许可协议信息（AGPL-3.0 非商业）
+- "帮助"菜单 → "关于墨言" 从 disabled 改为打开关于 Tab
+- `Settings.tsx` 支持 `initialTab` prop，菜单/气泡可指定打开目标 Tab
+- 新增更新气泡、关于 Tab 相关 CSS 样式
+
 ---
 
 ## 架构决策

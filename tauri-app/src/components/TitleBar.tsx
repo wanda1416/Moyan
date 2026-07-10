@@ -1,9 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
+/** 更新提示信息（与后端 updater.rs UpdateInfo 对应） */
+export interface TitleBarUpdateInfo {
+  latest_version: string;
+  release_url: string;
+}
+
 interface TitleBarProps {
   onMenuAction: (action: string) => void;
   theme: "light" | "dark";
+  /** 有可用更新时显示气泡（null = 无更新） */
+  updateInfo?: TitleBarUpdateInfo | null;
+  /** 点击气泡的下载按钮时触发 */
+  onOpenUpdate?: (url: string) => void;
+  /** 关闭更新气泡 */
+  onDismissUpdate?: () => void;
 }
 
 interface MenuItem {
@@ -19,7 +31,13 @@ interface MenuDef {
   items: MenuItem[];
 }
 
-export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
+export default function TitleBar({
+  onMenuAction,
+  theme,
+  updateInfo,
+  onOpenUpdate,
+  onDismissUpdate,
+}: TitleBarProps) {
   const [openMenu, setOpenMenu] = useState<number | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const titlebarRef = useRef<HTMLDivElement>(null);
@@ -45,7 +63,7 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
     const onMouseDown = (e: globalThis.MouseEvent) => {
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
-      if (target.closest('.win-btn') || target.closest('.menu-item')) return;
+      if (target.closest('.win-btn') || target.closest('.menu-item') || target.closest('.update-bubble')) return;
       appWindow.startDragging().catch((err: unknown) => console.error('startDragging failed:', err));
     };
 
@@ -75,6 +93,21 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
   const handleClose = useCallback(() => {
     appWindow.close().catch((err: unknown) => console.error("close failed:", err));
   }, [appWindow]);
+
+  const handleUpdateClick = useCallback(() => {
+    if (!updateInfo) return;
+    if (onOpenUpdate) {
+      onOpenUpdate(updateInfo.release_url);
+    } else if (typeof window !== "undefined") {
+      // 兜底：直接 window.open（Dev 模式可能 onOpenUpdate 未注册）
+      window.open(updateInfo.release_url, "_blank", "noopener");
+    }
+  }, [updateInfo, onOpenUpdate]);
+
+  const handleUpdateDismiss = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDismissUpdate) onDismissUpdate();
+  }, [onDismissUpdate]);
 
   const menus: MenuDef[] = [
     {
@@ -109,7 +142,7 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
     {
       label: "帮助",
       items: [
-        { label: "关于墨言", disabled: true },
+        { label: "关于墨言", action: "open-about" },
       ],
     },
   ];
@@ -171,6 +204,28 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
           <img src="/logo.png" alt="墨言" className="titlebar-logo" />
           <span className="titlebar-app-name">墨言</span>
         </div>
+      </div>
+      <div className="titlebar-update-area">
+        {updateInfo && (
+          <div className="update-bubble" role="status">
+            <button
+              className="update-bubble-action"
+              onClick={handleUpdateClick}
+              title={`查看 v${updateInfo.latest_version} 发布说明`}
+            >
+              <span className="update-bubble-dot" aria-hidden="true" />
+              <span className="update-bubble-text">发现新版本 v{updateInfo.latest_version}</span>
+            </button>
+            <button
+              className="update-bubble-close"
+              onClick={handleUpdateDismiss}
+              title="关闭"
+              aria-label="关闭更新提示"
+            >
+              ×
+            </button>
+          </div>
+        )}
       </div>
       <div className="titlebar-controls">
         <button className="win-btn" onClick={handleMinimize} title="最小化">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import TitleBar from "./components/TitleBar";
 import FileTree from "./components/FileTree";
 import Editor, { getFileType, countWords } from "./components/Editor";
@@ -10,6 +11,16 @@ import TabBar from "./components/TabBar";
 import StatusBar from "./components/StatusBar";
 import ConfirmDialog from "./components/ConfirmDialog";
 import "./styles.css";
+
+/** 后端 updater.rs 返回的更新信息结构 */
+interface UpdateInfo {
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_url: string;
+  release_notes: string;
+  published_at: string;
+}
 
 function isImageFile(path: string): boolean {
   const ext = path.split(".").pop()?.toLowerCase() || "";
@@ -51,6 +62,9 @@ function App() {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const settingsDirtyRef = useRef(false);
 
+  // 通过菜单/气泡打开设置页时请求的目标 Tab（用作 key 强制重新挂载）
+  const [settingsTabRequest, setSettingsTabRequest] = useState<"editor" | "llm" | "about">("editor");
+
   // 自定义确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -65,6 +79,11 @@ function App() {
 
   // Settings 组件注册的应用函数（由 Settings 在挂载时设置）
   const settingsApplyRef = useRef<(() => Promise<boolean>) | null>(null);
+
+  // 应用更新信息（启动 3 秒后异步检查）
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  // 本次会话是否已关闭过更新提示（用户手动关闭后不再弹）
+  const updateDismissedRef = useRef(false);
 
   const expandedPathsRef = useRef<Set<string>>(new Set());
   const resizingRef = useRef<"sidebar" | "agent" | null>(null);
@@ -178,6 +197,38 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // 启动 3 秒后异步检查更新（不阻塞 UI，失败静默）
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      invoke<UpdateInfo>("check_update")
+        .then((info) => {
+          if (info.has_update) {
+            setUpdateInfo(info);
+          }
+        })
+        .catch((err) => {
+          console.warn("检查更新失败:", err);
+        });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 关闭更新提示
+  const handleDismissUpdate = useCallback(() => {
+    updateDismissedRef.current = true;
+    setUpdateInfo(null);
+  }, []);
+
+  // 打开更新链接（使用系统默认浏览器）
+  const handleOpenUpdate = useCallback(async () => {
+    if (!updateInfo) return;
+    try {
+      await openExternal(updateInfo.release_url);
+    } catch (err) {
+      console.error("打开更新链接失败:", err);
+    }
+  }, [updateInfo]);
 
   // 切换主题并保存
   const handleThemeChange = useCallback(async (newTheme: Theme) => {
@@ -491,7 +542,7 @@ function App() {
   };
 
   // 打开设置标签（如果已存在则切换；不存在则添加）
-  const openSettingsTab = useCallback(() => {
+  const openSettingsTab = useCallback((tab: "editor" | "llm" | "about" = "editor") => {
     setOpenTabs((prev) => {
       const exists = prev.some((t) => t.path === SETTINGS_TAB_PATH);
       if (exists) return prev;
@@ -506,6 +557,8 @@ function App() {
       ];
     });
     setActiveTabPath(SETTINGS_TAB_PATH);
+    // 通过 settingsTabRequest 传个递增 key 强制 Settings 重新挂载到目标 tab
+    setSettingsTabRequest(tab);
   }, []);
 
   // 菜单事件处理
@@ -533,7 +586,9 @@ function App() {
     } else if (action === "set-theme-dark") {
       handleThemeChange("dark");
     } else if (action === "open-settings") {
-      openSettingsTab();
+      openSettingsTab("editor");
+    } else if (action === "open-about") {
+      openSettingsTab("about");
     }
   }, [saveTreeState, handleThemeChange, handleSave, openSettingsTab]);
 
@@ -544,7 +599,13 @@ function App() {
 
   return (
     <div className="app-root">
-      <TitleBar onMenuAction={handleMenuAction} theme={theme} />
+      <TitleBar
+        onMenuAction={handleMenuAction}
+        theme={theme}
+        updateInfo={updateInfo}
+        onOpenUpdate={handleOpenUpdate}
+        onDismissUpdate={handleDismissUpdate}
+      />
       {!projectRoot ? (
         <Welcome onOpenProject={handleOpenProject} />
       ) : (
@@ -583,6 +644,8 @@ function App() {
             />
             {isSettingsActive ? (
               <Settings
+                key={`settings-${settingsTabRequest}-${openTabs.find((t) => t.path === SETTINGS_TAB_PATH)?.path ?? "x"}`}
+                initialTab={settingsTabRequest}
                 appliedSettings={{ fontFamily: editorFontFamily, fontSize: editorFontSize }}
                 onApplyEditor={handleApplyEditorSettings}
                 onDirtyChange={(dirty) => {
