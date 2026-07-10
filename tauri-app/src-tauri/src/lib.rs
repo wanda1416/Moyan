@@ -9,6 +9,8 @@ use app_dir::{
     get_recent_projects, add_recent_project, remove_recent_project,
     get_last_project, set_last_project, clear_last_project,
     save_tree_state, load_tree_state,
+    list_sessions, load_session, save_session, delete_session,
+    get_current_session, set_current_session,
     get_config, save_config, test_llm_connection, list_models,
     write_log,
 };
@@ -44,6 +46,13 @@ pub fn run() {
             // 项目状态
             save_tree_state,
             load_tree_state,
+            // 会话历史
+            list_sessions,
+            load_session,
+            save_session,
+            delete_session,
+            get_current_session,
+            set_current_session,
             // 文件系统操作
             get_project_tree,
             read_file,

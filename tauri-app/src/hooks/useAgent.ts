@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { AgentMessage, AgentRequest, AgentResponse, AgentType } from "../types";
+import { invoke } from "@tauri-apps/api/core";
+import type { AgentMessage, AgentRequest, AgentResponse, AgentType, SessionSummary, SessionData } from "../types";
 
 const WS_URL = "ws://localhost:8765/ws";
 const HTTP_URL = "http://localhost:8765";
@@ -14,24 +15,157 @@ interface PendingRequest {
 export function useAgent() {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [connected, setConnected] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const pendingRef = useRef<Map<string, PendingRequest>>(new Map());
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdCounterRef = useRef(0);
   const shouldConnectRef = useRef(false);
-  const messagesRef = useRef<AgentMessage[]>([]); // 用于追踪最新消息
+  const messagesRef = useRef<AgentMessage[]>([]);
+  const projectRootRef = useRef<string | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
 
   // 同步 ref 和 state
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
   // 生成唯一请求 ID
   const nextRequestId = useCallback(() => {
     requestIdCounterRef.current += 1;
     return `req_${Date.now()}_${requestIdCounterRef.current}`;
   }, []);
+
+  // 设置项目根目录（用于会话存储）
+  const setProjectRoot = useCallback((root: string | null) => {
+    projectRootRef.current = root;
+    if (root) {
+      loadSessions();
+    } else {
+      setSessions([]);
+      setCurrentSessionId(null);
+    }
+  }, []);
+
+  // 加载会话列表
+  const loadSessions = useCallback(async () => {
+    const projectRoot = projectRootRef.current;
+    if (!projectRoot) return;
+    try {
+      const list = await invoke<SessionSummary[]>("list_sessions", { projectPath: projectRoot });
+      setSessions(list);
+      // 加载当前激活会话
+      const activeId = await invoke<string | null>("get_current_session", { projectPath: projectRoot });
+      if (activeId) {
+        await loadSession(activeId);
+      }
+    } catch (err) {
+      console.error("加载会话列表失败:", err);
+    }
+  }, []);
+
+  // 加载指定会话
+  const loadSession = useCallback(async (sessionId: string) => {
+    const projectRoot = projectRootRef.current;
+    if (!projectRoot) return;
+    try {
+      const data = await invoke<SessionData>("load_session", {
+        projectPath: projectRoot,
+        sessionId,
+      });
+      setMessages(data.messages);
+      setCurrentSessionId(sessionId);
+      // 保存为当前激活会话
+      await invoke("set_current_session", {
+        projectPath: projectRoot,
+        sessionId,
+      });
+    } catch (err) {
+      console.error("加载会话失败:", err);
+    }
+  }, []);
+
+  // 保存当前会话
+  const saveCurrentSession = useCallback(async () => {
+    const projectRoot = projectRootRef.current;
+    const currentMessages = messagesRef.current;
+    if (!projectRoot || currentMessages.length === 0) return;
+
+    let sessionId = currentSessionIdRef.current;
+    if (!sessionId) {
+      // 创建新会话 ID
+      sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    }
+
+    // 自动生成标题：取第一条用户消息的前 20 字符
+    const firstUserMsg = currentMessages.find((m) => m.role === "user");
+    const title = firstUserMsg
+      ? firstUserMsg.content.slice(0, 20) + (firstUserMsg.content.length > 20 ? "..." : "")
+      : "新对话";
+
+    try {
+      await invoke("save_session", {
+        projectPath: projectRoot,
+        sessionId,
+        title,
+        messages: currentMessages,
+      });
+      setCurrentSessionId(sessionId);
+      // 刷新会话列表
+      const list = await invoke<SessionSummary[]>("list_sessions", { projectPath: projectRoot });
+      setSessions(list);
+    } catch (err) {
+      console.error("保存会话失败:", err);
+    }
+  }, []);
+
+  // 删除会话
+  const deleteSession = useCallback(async (sessionId: string) => {
+    const projectRoot = projectRootRef.current;
+    if (!projectRoot) return;
+    try {
+      await invoke("delete_session", {
+        projectPath: projectRoot,
+        sessionId,
+      });
+      // 如果删除的是当前会话，清空当前状态
+      if (currentSessionIdRef.current === sessionId) {
+        setMessages([]);
+        setCurrentSessionId(null);
+        await invoke("set_current_session", {
+          projectPath: projectRoot,
+          sessionId: null,
+        });
+      }
+      // 刷新列表
+      const list = await invoke<SessionSummary[]>("list_sessions", { projectPath: projectRoot });
+      setSessions(list);
+    } catch (err) {
+      console.error("删除会话失败:", err);
+    }
+  }, []);
+
+  // 新建会话（清空当前对话）
+  const startNewSession = useCallback(() => {
+    setMessages([]);
+    setCurrentSessionId(null);
+  }, []);
+
+  // 切换会话
+  const switchSession = useCallback(async (sessionId: string) => {
+    // 先保存当前会话
+    if (messagesRef.current.length > 0) {
+      await saveCurrentSession();
+    }
+    // 加载目标会话
+    await loadSession(sessionId);
+  }, [saveCurrentSession, loadSession]);
 
   // 处理收到的消息
   const handleMessage = useCallback((event: MessageEvent) => {
@@ -72,7 +206,6 @@ export function useAgent() {
     ws.onopen = () => {
       setConnected(true);
       reconnectAttemptRef.current = 0;
-      // 清理待处理请求
       pendingRef.current.forEach((p) => {
         clearTimeout(p.timer);
         p.reject(new Error("连接已重置"));
@@ -83,7 +216,6 @@ export function useAgent() {
     ws.onclose = () => {
       setConnected(false);
       wsRef.current = null;
-      // 自动重连
       if (shouldConnectRef.current) {
         const attempt = reconnectAttemptRef.current;
         const delay = Math.min(1000 * Math.pow(2, attempt), MAX_RECONNECT_DELAY);
@@ -92,10 +224,7 @@ export function useAgent() {
       }
     };
 
-    ws.onerror = () => {
-      // onerror 后会触发 onclose，重连逻辑在 onclose 中处理
-    };
-
+    ws.onerror = () => {};
     ws.onmessage = handleMessage;
   }, [handleMessage]);
 
@@ -109,7 +238,6 @@ export function useAgent() {
     wsRef.current?.close();
     wsRef.current = null;
     setConnected(false);
-    // 清理待处理请求
     pendingRef.current.forEach((p) => {
       clearTimeout(p.timer);
       p.reject(new Error("连接已断开"));
@@ -129,7 +257,6 @@ export function useAgent() {
         const requestId = nextRequestId();
         const fullRequest = { ...request, request_id: requestId };
 
-        // 添加用户消息到列表
         const userMsg: AgentMessage = {
           role: "user",
           content: String(request.payload?.question || request.payload?.instruction || JSON.stringify(request)),
@@ -138,7 +265,6 @@ export function useAgent() {
         };
         setMessages((prev) => [...prev, userMsg]);
 
-        // 设置超时（60秒）
         const timer = setTimeout(() => {
           if (pendingRef.current.has(requestId)) {
             pendingRef.current.delete(requestId);
@@ -186,7 +312,6 @@ export function useAgent() {
       setMessages((prev) => [...prev, userMsg]);
 
       try {
-        // 使用 ref 获取最新消息历史
         const currentMessages = messagesRef.current;
         const chatMessages = [
           ...currentMessages.map((m) => ({
@@ -218,6 +343,11 @@ export function useAgent() {
         };
         setMessages((prev) => [...prev, agentMsg]);
 
+        // 自动保存会话（延迟执行，不阻塞 UI）
+        setTimeout(() => {
+          saveCurrentSession();
+        }, 100);
+
         return reply;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "未知错误";
@@ -230,7 +360,7 @@ export function useAgent() {
         throw err;
       }
     },
-    [] // 不再依赖 messages，使用 ref
+    [saveCurrentSession]
   );
 
   // 组件卸载时断开连接
@@ -253,5 +383,15 @@ export function useAgent() {
     sendChat,
     setCurrentFile,
     clearMessages,
+    // 会话管理
+    sessions,
+    currentSessionId,
+    setProjectRoot,
+    loadSessions,
+    loadSession,
+    saveCurrentSession,
+    deleteSession,
+    startNewSession,
+    switchSession,
   };
 }

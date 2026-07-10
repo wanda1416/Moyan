@@ -72,3 +72,21 @@ export interface ContinuityWarning {
   file?: string;
   line?: number;
 }
+
+/** 会话摘要（列表显示用） */
+export interface SessionSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+/** 会话完整数据 */
+export interface SessionData {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: AgentMessage[];
+}

@@ -220,7 +220,7 @@ function App() {
             <Editor filePath={currentFile} content={fileContent} onChange={handleContentChange} theme={theme} />
           </main>
           <aside className="agent-panel">
-            <AgentPanel currentFile={currentFile} />
+            <AgentPanel currentFile={currentFile} projectRoot={projectRoot} />
           </aside>
         </div>
       )}

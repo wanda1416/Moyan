@@ -3,19 +3,54 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAgent } from "../hooks/useAgent";
 import { useLogger } from "../hooks/useLogger";
 import ChatMessage from "./ChatMessage";
+import type { SessionSummary } from "../types";
 
 interface AgentPanelProps {
   currentFile: string | null;
+  projectRoot: string | null;
 }
 
-export default function AgentPanel({ currentFile }: AgentPanelProps) {
-  const { messages, connected, connect, disconnect, sendChat, setCurrentFile, clearMessages } = useAgent();
+export default function AgentPanel({ currentFile, projectRoot }: AgentPanelProps) {
+  const {
+    messages,
+    connected,
+    connect,
+    disconnect,
+    sendChat,
+    setCurrentFile,
+    sessions,
+    currentSessionId,
+    setProjectRoot,
+    saveCurrentSession,
+    deleteSession,
+    startNewSession,
+    switchSession,
+  } = useAgent();
+
   const logger = useLogger();
   const [input, setInput] = useState("");
   const [pythonOnline, setPythonOnline] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showSessionList, setShowSessionList] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevFileRef = useRef<string | null>(null);
+  const sessionDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 项目变化时通知 hook
+  useEffect(() => {
+    setProjectRoot(projectRoot);
+  }, [projectRoot, setProjectRoot]);
+
+  // 点击外部关闭会话下拉
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (sessionDropdownRef.current && !sessionDropdownRef.current.contains(e.target as Node)) {
+        setShowSessionList(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // 启动时检查 Python 状态
   const checkHttpHealth = useCallback(async () => {
@@ -31,7 +66,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
     checkHttpHealth();
   }, [checkHttpHealth]);
 
-  // Python 在线时自动连接 WebSocket（用于未来的 Agent 功能）
+  // Python 在线时自动连接 WebSocket
   useEffect(() => {
     if (pythonOnline && !connected) {
       connect();
@@ -61,7 +96,7 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
     if (pythonOnline) connect();
   };
 
-  // 发送消息 - 直接调用 LLM
+  // 发送消息
   const handleSend = async () => {
     if (!input.trim() || !pythonOnline || sending) return;
 
@@ -82,7 +117,53 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
     }
   };
 
+  // 新建会话
+  const handleNewSession = async () => {
+    // 先保存当前会话
+    if (messages.length > 0) {
+      await saveCurrentSession();
+    }
+    startNewSession();
+    setShowSessionList(false);
+  };
+
+  // 切换会话
+  const handleSwitchSession = async (sessionId: string) => {
+    if (sessionId === currentSessionId) {
+      setShowSessionList(false);
+      return;
+    }
+    await switchSession(sessionId);
+    setShowSessionList(false);
+  };
+
+  // 删除会话
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!confirm("确定要删除这个会话吗？")) return;
+    await deleteSession(sessionId);
+  };
+
+  // 格式化时间
+  const formatTime = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      if (isToday) {
+        return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+      }
+      return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
+
   const statusText = !pythonOnline ? "后端离线" : "已连接";
+
+  // 当前会话标题
+  const currentSession = sessions.find((s) => s.id === currentSessionId);
+  const displayTitle = currentSession?.title || (messages.length > 0 ? "新对话" : "对话");
 
   return (
     <div className="agent-panel-inner">
@@ -99,20 +180,56 @@ export default function AgentPanel({ currentFile }: AgentPanelProps) {
             )}
           </div>
         </div>
+
+        {/* 会话选择器 */}
+        <div className="session-selector" ref={sessionDropdownRef}>
+          <button
+            className="session-selector-btn"
+            onClick={() => setShowSessionList(!showSessionList)}
+            title="切换会话"
+          >
+            <span className="session-selector-title">{displayTitle}</span>
+            <span className="session-selector-arrow">{showSessionList ? "▲" : "▼"}</span>
+          </button>
+          <button className="new-session-btn" onClick={handleNewSession} title="新建对话">
+            +
+          </button>
+
+          {showSessionList && (
+            <div className="session-dropdown">
+              {sessions.length === 0 ? (
+                <div className="session-dropdown-empty">暂无历史会话</div>
+              ) : (
+                sessions.map((s: SessionSummary) => (
+                  <div
+                    key={s.id}
+                    className={`session-item ${s.id === currentSessionId ? "active" : ""}`}
+                    onClick={() => handleSwitchSession(s.id)}
+                  >
+                    <div className="session-item-info">
+                      <span className="session-item-title">{s.title}</span>
+                      <span className="session-item-meta">
+                        {formatTime(s.updated_at)} · {s.message_count} 条
+                      </span>
+                    </div>
+                    <button
+                      className="session-item-delete"
+                      onClick={(e) => handleDeleteSession(e, s.id)}
+                      title="删除会话"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="agent-tabs">
           <button className="agent-tab active">对话</button>
           <button className="agent-tab">设定</button>
           <button className="agent-tab">伏笔</button>
-        </div>
-        <div className="agent-selector">
-          <button
-            className="clear-btn"
-            onClick={clearMessages}
-            title="清空对话"
-            disabled={messages.length === 0}
-          >
-            ✕
-          </button>
         </div>
       </div>
       <div className="agent-messages">

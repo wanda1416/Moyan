@@ -9,7 +9,7 @@
 | 编辑器 | Monaco Editor | Markdown 编辑与预览 |
 | 后端 | Python 3.11+ / FastAPI | Agent 调度、语义检索、LLM 适配 |
 | 数据库 | SQLite | 伏笔账本、人物状态、校验日志 |
-| 存储 | `~/.moyan/` | config.json（固定配置）+ state.json（项目状态） |
+| 存储 | `~/.moyan/` | settings.json（用户设置）+ workspace.json（工作区）+ projects/（项目状态与会话） |
 
 ---
 
@@ -150,6 +150,31 @@
 - 代理设置通过环境变量 `HTTP_PROXY` / `HTTPS_PROXY` 注入
 - 设置页面新增 Gemini 下拉选项、HTTP 代理勾选框
 
+### 2026-07-10 配置文件三级分层重构
+
+- 配置存储从 `config.json` + `state.json` 重构为三级结构：
+  - `settings.json`：用户设置（LLM 配置、主题）
+  - `workspace.json`：工作区上下文（最近项目列表、上次打开的项目）
+  - `projects/project-{uid}.json`：单个项目状态（目录树展开、当前文件）
+- Rust `app_dir.rs` 完全重写，新增路径函数和迁移逻辑
+- Python `config.py` 路径统一为 `settings.json`
+- 删除废弃的 `config.rs` 模块
+- 新增 `remove_recent_project` 命令，最近项目支持 ✕ 按钮移除（不删除项目状态文件）
+- 旧 `config.json` / `state.json` 自动迁移到新结构
+
+### 2026-07-10 对话历史功能
+
+- 新增会话持久化存储，每个项目的会话独立保存
+- 存储结构：`~/.moyan/projects/sessions-{uid}/sessions.json`（索引）+ `session-{id}.json`（消息）
+- Rust 新增 6 个命令：`list_sessions` / `load_session` / `save_session` / `delete_session` / `get_current_session` / `set_current_session`
+- `useAgent.ts` 扩展会话管理：`sessions` / `currentSessionId` / `loadSessions` / `switchSession` / `deleteSession` / `startNewSession`
+- 每次收到 LLM 回复后自动保存当前会话
+- 会话标题自动取第一条用户消息前 20 字符
+- `AgentPanel.tsx` 新增会话选择器下拉菜单，显示历史会话列表（按更新时间倒序）
+- 当前会话高亮显示，hover 显示删除按钮
+- "+ 新对话" 按钮创建空白会话（自动保存当前会话后切换）
+- 移除"清空当前对话"按钮，避免数据丢失
+
 ---
 
 ## 架构决策
@@ -168,11 +193,16 @@ Agent 核心需要调用 LLM API、做语义检索、管理 SQLite 记忆层，P
 
 ### 目录树状态为什么存在 Rust 侧
 
-前端 `localStorage` 与 WebView 绑定，清除浏览器数据会丢失。存到 `~/.moyan/state.json` 更可靠，且与项目配置集中管理。
+前端 `localStorage` 与 WebView 绑定，清除浏览器数据会丢失。存到 `~/.moyan/projects/project-{uid}.json` 更可靠，且与项目配置集中管理。
 
-### config.json 与 state.json 分离
+### 配置文件三级分层
 
-`config.json` 存储固定配置（最近项目、LLM 设置、Python 连接等），用户主动修改才会变化；`state.json` 存储项目运行时状态（目录树展开、当前文件），随用户操作频繁更新。分离后两者互不干扰，避免状态写入影响配置读取。
+- `settings.json`：用户设置，跨项目共享（LLM 配置、主题偏好）
+- `workspace.json`：工作区上下文（最近项目列表、上次打开的项目）
+- `projects/project-{uid}.json`：单个项目状态（目录树展开、当前文件）
+- `projects/sessions-{uid}/`：单个项目的会话历史
+
+分离后各文件职责清晰，用户设置不会与项目状态混在一起，会话历史按项目隔离。
 
 ---
 
