@@ -303,7 +303,7 @@ async def chat(request: Request):
 
 @app.post("/api/rag/build_index")
 async def rag_build_index(data: dict):
-    """为项目构建 RAG 向量索引"""
+    """为项目构建 RAG 向量索引（全量）"""
     project_root = data.get("project_root", "")
     if not project_root:
         return {"status": "error", "message": "缺少 project_root 参数"}
@@ -318,6 +318,34 @@ async def rag_build_index(data: dict):
     except Exception as e:
         logger.error(f"构建索引失败: {e}")
         return {"status": "error", "message": f"构建索引失败: {str(e)}"}
+
+
+@app.post("/api/rag/refresh_index")
+async def rag_refresh_index(data: dict):
+    """增量刷新 RAG 向量索引"""
+    project_root = data.get("project_root", "")
+    if not project_root:
+        return {"status": "error", "message": "缺少 project_root 参数"}
+
+    try:
+        from rag.index import get_project_index
+        pindex = get_project_index()
+        result = pindex.refresh_index(project_root)
+        return {
+            "status": "ok",
+            "chunks": result["chunks"],
+            "duration": result["duration"],
+            "incremental": result.get("incremental", False),
+            "added_files": result.get("added_files", 0),
+            "modified_files": result.get("modified_files", 0),
+            "deleted_files": result.get("deleted_files", 0),
+            "unchanged_files": result.get("unchanged_files", 0),
+        }
+    except ImportError as e:
+        return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install sentence-transformers faiss-cpu"}
+    except Exception as e:
+        logger.error(f"刷新索引失败: {e}")
+        return {"status": "error", "message": f"刷新索引失败: {str(e)}"}
 
 
 @app.post("/api/rag/search")

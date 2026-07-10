@@ -116,7 +116,7 @@ export default function TitleBar({
         { label: "打开项目...", action: "open-project" },
         { label: "保存", shortcut: "Ctrl+S", action: "save" },
         { label: "", separator: true },
-        { label: "生成索引", action: "build-index" },
+        { label: "项目设置...", action: "open-project-settings" },
         { label: "", separator: true },
         { label: "退出", action: "exit" },
       ],

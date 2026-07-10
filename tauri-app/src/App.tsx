@@ -7,6 +7,7 @@ import Editor, { getFileType, countWords } from "./components/Editor";
 import AgentPanel from "./components/AgentPanel";
 import Welcome from "./components/Welcome";
 import Settings from "./components/Settings";
+import ProjectSettings from "./components/ProjectSettings";
 import TabBar from "./components/TabBar";
 import StatusBar from "./components/StatusBar";
 import ConfirmDialog from "./components/ConfirmDialog";
@@ -29,6 +30,12 @@ function isImageFile(path: string): boolean {
 
 type Theme = "light" | "dark";
 
+interface IndexStatus {
+  indexed: boolean;
+  chunks: number;
+  built_at: string;
+}
+
 interface TabData {
   path: string;
   content: string;
@@ -38,6 +45,8 @@ interface TabData {
 
 /** 特殊标签：设置页 */
 const SETTINGS_TAB_PATH = "__settings__";
+/** 特殊标签：项目设置页 */
+const PROJECT_SETTINGS_TAB_PATH = "__project_settings__";
 
 // 面板宽度默认值
 const DEFAULT_SIDEBAR_WIDTH = 260;
@@ -158,7 +167,7 @@ function App() {
     try {
       const paths = Array.from(expandedPathsRef.current);
       const tabsInfo = openTabs
-        .filter((t) => t.path !== SETTINGS_TAB_PATH)
+        .filter((t) => t.path !== SETTINGS_TAB_PATH && t.path !== PROJECT_SETTINGS_TAB_PATH)
         .map((t) => ({ path: t.path, md_mode: t.mdMode }));
       await invoke("save_tree_state", {
         projectPath: projectRoot,
@@ -203,6 +212,33 @@ function App() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // 项目打开时自动构建索引（如果未建立）
+  useEffect(() => {
+    if (!projectRoot) return;
+    // 先获取索引状态
+    invoke<IndexStatus>("get_rag_index_status", { projectPath: projectRoot })
+      .then((status) => {
+        setIndexStatus(status);
+        if (!status.indexed) {
+          // 未建立索引，自动后台构建
+          setBuildIndexing(true);
+          invoke<{ status: string; chunks: number; duration: number }>(
+            "build_rag_index", { projectPath: projectRoot }
+          )
+            .then((result) => {
+              setIndexStatus({ indexed: true, chunks: result.chunks, built_at: new Date().toISOString() });
+            })
+            .catch((err) => {
+              console.warn("自动构建索引失败:", err);
+            })
+            .finally(() => {
+              setBuildIndexing(false);
+            });
+        }
+      })
+      .catch(() => {});
+  }, [projectRoot]);
 
   // 启动 3 秒后异步检查更新（不阻塞 UI，失败静默）
   useEffect(() => {
@@ -567,6 +603,24 @@ function App() {
     setSettingsTabRequest(tab);
   }, []);
 
+  // 打开项目设置标签（如果已存在则切换；不存在则添加）
+  const openProjectSettingsTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      const exists = prev.some((t) => t.path === PROJECT_SETTINGS_TAB_PATH);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          path: PROJECT_SETTINGS_TAB_PATH,
+          content: "",
+          savedContent: "",
+          mdMode: "preview",
+        },
+      ];
+    });
+    setActiveTabPath(PROJECT_SETTINGS_TAB_PATH);
+  }, []);
+
   // 菜单事件处理
   const handleMenuAction = useCallback(async (action: string) => {
     if (action === "open-project") {
@@ -595,20 +649,8 @@ function App() {
       openSettingsTab("editor");
     } else if (action === "open-about") {
       openSettingsTab("about");
-    } else if (action === "build-index") {
-      if (!projectRoot) return;
-      setBuildIndexing(true);
-      try {
-        const result = await invoke<{ status: string; chunks: number; duration: number }>(
-          "build_rag_index", { projectPath: projectRoot }
-        );
-        setIndexStatus({ indexed: true, chunks: result.chunks, built_at: new Date().toISOString() });
-      } catch (err) {
-        console.error("构建索引失败:", err);
-        alert(`构建索引失败: ${err}`);
-      } finally {
-        setBuildIndexing(false);
-      }
+    } else if (action === "open-project-settings") {
+      openProjectSettingsTab();
     }
   }, [saveTreeState, handleThemeChange, handleSave, openSettingsTab, projectRoot]);
 
@@ -616,6 +658,7 @@ function App() {
   const wordCount = activeTab ? countWords(activeTab.content) : 0;
   const fileType = getFileType(activeTabPath);
   const isSettingsActive = activeTabPath === SETTINGS_TAB_PATH;
+  const isProjectSettingsActive = activeTabPath === PROJECT_SETTINGS_TAB_PATH;
 
   return (
     <div className="app-root">
@@ -657,6 +700,7 @@ function App() {
                 path: t.path,
                 dirty: t.path === SETTINGS_TAB_PATH ? settingsDirty : t.content !== t.savedContent,
                 isSettings: t.path === SETTINGS_TAB_PATH,
+                isProjectSettings: t.path === PROJECT_SETTINGS_TAB_PATH,
               }))}
               activeTabPath={activeTabPath}
               onTabClick={setActiveTabPath}
@@ -674,6 +718,8 @@ function App() {
                 }}
                 registerApply={(fn) => { settingsApplyRef.current = fn; }}
               />
+            ) : isProjectSettingsActive && projectRoot ? (
+              <ProjectSettings projectRoot={projectRoot} />
             ) : (
               <Editor
                 filePath={activeTabPath}
@@ -685,7 +731,7 @@ function App() {
                 fontSize={editorFontSize}
               />
             )}
-            {!isSettingsActive && (
+            {!isSettingsActive && !isProjectSettingsActive && (
               <StatusBar
                 filePath={activeTabPath}
                 wordCount={wordCount}

@@ -953,6 +953,37 @@ pub async fn build_rag_index(project_path: String) -> Result<serde_json::Value, 
     Ok(body)
 }
 
+/// 增量刷新项目 RAG 索引
+#[tauri::command]
+pub async fn refresh_rag_index(project_path: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({ "project_root": project_path });
+
+    let resp = client
+        .post("http://127.0.0.1:8765/api/rag/refresh_index")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("无法连接 Python 后端: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Python 后端返回 HTTP {}", resp.status()));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    let status = body["status"].as_str().unwrap_or("error");
+    if status != "ok" {
+        let msg = body["message"].as_str().unwrap_or("未知错误");
+        return Err(msg.to_string());
+    }
+
+    Ok(body)
+}
+
 /// 语义检索
 #[tauri::command]
 pub async fn search_rag(
@@ -1003,4 +1034,18 @@ pub async fn get_rag_index_status(project_path: String) -> Result<serde_json::Va
 
     let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
     Ok(body)
+}
+
+/// 删除项目 RAG 索引（直接删除本地索引目录）
+#[tauri::command]
+pub fn delete_rag_index(project_path: String) -> Result<serde_json::Value, String> {
+    let uid = project_path_to_uid(&project_path);
+    let index_dir = get_projects_dir()?.join(format!("index-{}", uid));
+
+    if !index_dir.exists() {
+        return Ok(serde_json::json!({ "status": "ok", "message": "索引不存在，无需删除" }));
+    }
+
+    std::fs::remove_dir_all(&index_dir).map_err(|e| format!("删除索引目录失败: {}", e))?;
+    Ok(serde_json::json!({ "status": "ok", "message": "索引已删除" }))
 }

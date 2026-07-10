@@ -1,5 +1,5 @@
 interface TabBarProps {
-  tabs: { path: string; dirty: boolean; isSettings?: boolean }[];
+  tabs: { path: string; dirty: boolean; isSettings?: boolean; isProjectSettings?: boolean }[];
   activeTabPath: string | null;
   onTabClick: (path: string) => void;
   onTabClose: (path: string) => void;
@@ -16,16 +16,18 @@ export default function TabBar({ tabs, activeTabPath, onTabClick, onTabClose }: 
     <div className="tab-bar">
       {tabs.map((tab) => {
         const isActive = tab.path === activeTabPath;
-        const label = tab.isSettings ? "设置" : getFileName(tab.path);
+        const label = tab.isSettings ? "设置" : tab.isProjectSettings ? "项目设置" : getFileName(tab.path);
+        const isSpecialTab = tab.isSettings || tab.isProjectSettings;
         return (
           <div
             key={tab.path}
-            className={`tab-item${isActive ? " active" : ""}${tab.isSettings ? " tab-item-settings" : ""}`}
+            className={`tab-item${isActive ? " active" : ""}${isSpecialTab ? " tab-item-settings" : ""}`}
             onClick={() => onTabClick(tab.path)}
             title={tab.path}
           >
             <span className="tab-item-name">
               {tab.isSettings && <span className="tab-item-icon">⚙</span>}
+              {tab.isProjectSettings && <span className="tab-item-icon">📁</span>}
               {label}
               {tab.dirty && <span className="tab-dirty">●</span>}
             </span>

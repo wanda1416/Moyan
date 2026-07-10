@@ -14,7 +14,7 @@ use app_dir::{
     get_current_session, set_current_session,
     get_config, save_config, test_llm_connection, list_models,
     write_log,
-    build_rag_index, search_rag, get_rag_index_status,
+    build_rag_index, search_rag, get_rag_index_status, delete_rag_index, refresh_rag_index,
 };
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64};
 use python_bridge::{PythonBridge, PythonConfig, LaunchMode, start_python, stop_python, python_health_check, python_status};
@@ -92,6 +92,8 @@ pub fn run() {
             build_rag_index,
             search_rag,
             get_rag_index_status,
+            delete_rag_index,
+            refresh_rag_index,
         ])
         .setup(|app| {
             // 应用启动后自动启动 Python 后端
