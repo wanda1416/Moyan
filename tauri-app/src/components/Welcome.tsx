@@ -52,7 +52,7 @@ export default function Welcome({ onOpenProject }: WelcomeProps) {
     <div className="welcome-container">
       <div className="welcome-content">
         <div className="welcome-logo">
-          <span className="welcome-icon">墨</span>
+          <img src="/logo.png" alt="墨言" className="welcome-logo-img" />
         </div>
         <h1 className="welcome-title">墨言</h1>
         <p className="welcome-subtitle">AI 小说协作</p>

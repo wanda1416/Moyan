@@ -167,7 +167,10 @@ export default function TitleBar({ onMenuAction, theme }: TitleBarProps) {
             </div>
           ))}
         </div>
-        <div className="titlebar-title" />
+        <div className="titlebar-title">
+          <img src="/logo.png" alt="墨言" className="titlebar-logo" />
+          <span className="titlebar-app-name">墨言</span>
+        </div>
       </div>
       <div className="titlebar-controls">
         <button className="win-btn" onClick={handleMinimize} title="最小化">
