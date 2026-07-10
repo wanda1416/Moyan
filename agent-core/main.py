@@ -220,15 +220,46 @@ async def list_models(data: dict):
 
 @app.post("/api/chat")
 async def chat(request: Request):
-    """简单对话接口 - 直接调用 LLM"""
+    """对话接口 - 支持 RAG 检索增强"""
     try:
         body = await request.json()
         messages = body.get("messages", [])
+        project_root = body.get("project_root", "")
 
         if not messages:
             return {"status": "error", "message": "缺少 messages 参数"}
 
         logger.info(f"收到对话请求，{len(messages)} 条消息")
+
+        # RAG 检索增强：如果项目索引存在，自动检索相关上下文
+        rag_context = ""
+        if project_root:
+            try:
+                from rag.index import get_project_index
+                pindex = get_project_index()
+                status = pindex.get_index_status(project_root)
+                if status["indexed"]:
+                    # 取用户最后一条消息作为查询
+                    last_user_msg = ""
+                    for m in reversed(messages):
+                        if m.get("role") == "user":
+                            last_user_msg = m.get("content", "")
+                            break
+
+                    if last_user_msg:
+                        results = pindex.search(project_root, last_user_msg, top_k=3)
+                        # 过滤低分结果（阈值 0.5）
+                        good_results = [r for r in results if r["score"] > 0.5]
+                        if good_results:
+                            context_parts = ["以下是从项目文档中检索到的相关内容，请在回答时参考："]
+                            for r in good_results:
+                                source = r["source_path"].split("\\")[-1].split("/")[-1]
+                                heading = r.get("heading", "")
+                                context_parts.append(f"\n---\n[来源: {source}" + (f" / {heading}" if heading else "") + f"]\n{r['text']}")
+                            rag_context = "\n".join(context_parts)
+                            logger.info(f"RAG 检索命中 {len(good_results)} 条结果")
+            except Exception as e:
+                logger.warning(f"RAG 检索失败（不影响对话）: {e}")
 
         # 创建 LLM 适配器
         from llm.adapter import create_adapter, LLMMessage
@@ -244,8 +275,16 @@ async def chat(request: Request):
         if not llm.is_available():
             return {"status": "error", "message": f"LLM 服务不可用，请检查配置"}
 
+        # 构建最终消息列表（注入 RAG 上下文）
+        final_messages = list(messages)
+        if rag_context:
+            final_messages.insert(0, {
+                "role": "system",
+                "content": rag_context,
+            })
+
         # 转换消息格式
-        llm_messages = [LLMMessage(m["role"], m["content"]) for m in messages]
+        llm_messages = [LLMMessage(m["role"], m["content"]) for m in final_messages]
 
         # 调用 LLM
         reply = await llm.chat(llm_messages)
@@ -256,6 +295,63 @@ async def chat(request: Request):
     except Exception as e:
         logger.error(f"对话失败: {e}")
         return {"status": "error", "message": f"对话失败: {str(e)}"}
+
+
+# ============================================================
+# RAG 检索接口
+# ============================================================
+
+@app.post("/api/rag/build_index")
+async def rag_build_index(data: dict):
+    """为项目构建 RAG 向量索引"""
+    project_root = data.get("project_root", "")
+    if not project_root:
+        return {"status": "error", "message": "缺少 project_root 参数"}
+
+    try:
+        from rag.index import get_project_index
+        pindex = get_project_index()
+        result = pindex.build_index(project_root)
+        return {"status": "ok", "chunks": result["chunks"], "duration": result["duration"]}
+    except ImportError as e:
+        return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install sentence-transformers faiss-cpu"}
+    except Exception as e:
+        logger.error(f"构建索引失败: {e}")
+        return {"status": "error", "message": f"构建索引失败: {str(e)}"}
+
+
+@app.post("/api/rag/search")
+async def rag_search(data: dict):
+    """语义检索"""
+    project_root = data.get("project_root", "")
+    query = data.get("query", "")
+    top_k = data.get("top_k", 5)
+
+    if not project_root or not query:
+        return {"status": "error", "message": "缺少 project_root 或 query 参数"}
+
+    try:
+        from rag.index import get_project_index
+        pindex = get_project_index()
+        results = pindex.search(project_root, query, top_k=top_k)
+        return {"status": "ok", "results": results}
+    except Exception as e:
+        logger.error(f"检索失败: {e}")
+        return {"status": "error", "message": f"检索失败: {str(e)}"}
+
+
+@app.get("/api/rag/index_status")
+async def rag_index_status(project_root: str = ""):
+    """获取索引状态"""
+    if not project_root:
+        return {"indexed": False, "chunks": 0, "built_at": ""}
+
+    try:
+        from rag.index import get_project_index
+        pindex = get_project_index()
+        return pindex.get_index_status(project_root)
+    except Exception as e:
+        return {"indexed": False, "chunks": 0, "built_at": "", "error": str(e)}
 
 
 @app.websocket("/ws")

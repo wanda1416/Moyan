@@ -917,3 +917,90 @@ pub fn write_log(level: String, message: String) -> Result<(), String> {
 
     Ok(())
 }
+
+// ============================================================
+// RAG 检索（代理到 Python 后端）
+// ============================================================
+
+/// 构建项目 RAG 索引
+#[tauri::command]
+pub async fn build_rag_index(project_path: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))  // 索引构建可能耗时较长
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({ "project_root": project_path });
+
+    let resp = client
+        .post("http://127.0.0.1:8765/api/rag/build_index")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("无法连接 Python 后端: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Python 后端返回 HTTP {}", resp.status()));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    let status = body["status"].as_str().unwrap_or("error");
+    if status != "ok" {
+        let msg = body["message"].as_str().unwrap_or("未知错误");
+        return Err(msg.to_string());
+    }
+
+    Ok(body)
+}
+
+/// 语义检索
+#[tauri::command]
+pub async fn search_rag(
+    project_path: String,
+    query: String,
+    top_k: Option<i32>,
+) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({
+        "project_root": project_path,
+        "query": query,
+        "top_k": top_k.unwrap_or(5),
+    });
+
+    let resp = client
+        .post("http://127.0.0.1:8765/api/rag/search")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("无法连接 Python 后端: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Python 后端返回 HTTP {}", resp.status()));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    Ok(body)
+}
+
+/// 获取索引状态
+#[tauri::command]
+pub async fn get_rag_index_status(project_path: String) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "http://127.0.0.1:8765/api/rag/index_status?project_root={}",
+        urlencoding::encode(&project_path)
+    );
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("无法连接 Python 后端: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Python 后端返回 HTTP {}", resp.status()));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
+    Ok(body)
+}

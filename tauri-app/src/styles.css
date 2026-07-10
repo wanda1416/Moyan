@@ -1786,3 +1786,38 @@ html, body, #root {
   background: var(--danger, #e53935);
   color: #fff;
 }
+
+/* === StatusBar 索引状态指示器 === */
+.status-bar-index {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  padding: 0 4px;
+}
+.index-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  transition: background 0.2s, opacity 0.2s;
+}
+.index-dot.indexed {
+  background: #4caf50;
+  opacity: 1;
+}
+.index-dot.building {
+  background: var(--accent);
+  opacity: 1;
+  animation: index-pulse 1.2s infinite;
+}
+@keyframes index-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.index-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}

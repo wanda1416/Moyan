@@ -85,6 +85,12 @@ function App() {
   // 本次会话是否已关闭过更新提示（用户手动关闭后不再弹）
   const updateDismissedRef = useRef(false);
 
+  // RAG 索引状态
+  const [indexStatus, setIndexStatus] = useState<{ indexed: boolean; chunks: number; built_at: string }>({
+    indexed: false, chunks: 0, built_at: "",
+  });
+  const [buildIndexing, setBuildIndexing] = useState(false);
+
   const expandedPathsRef = useRef<Set<string>>(new Set());
   const resizingRef = useRef<"sidebar" | "agent" | null>(null);
   const startXRef = useRef(0);
@@ -589,8 +595,22 @@ function App() {
       openSettingsTab("editor");
     } else if (action === "open-about") {
       openSettingsTab("about");
+    } else if (action === "build-index") {
+      if (!projectRoot) return;
+      setBuildIndexing(true);
+      try {
+        const result = await invoke<{ status: string; chunks: number; duration: number }>(
+          "build_rag_index", { projectPath: projectRoot }
+        );
+        setIndexStatus({ indexed: true, chunks: result.chunks, built_at: new Date().toISOString() });
+      } catch (err) {
+        console.error("构建索引失败:", err);
+        alert(`构建索引失败: ${err}`);
+      } finally {
+        setBuildIndexing(false);
+      }
     }
-  }, [saveTreeState, handleThemeChange, handleSave, openSettingsTab]);
+  }, [saveTreeState, handleThemeChange, handleSave, openSettingsTab, projectRoot]);
 
   // 计算当前文件的字数和类型（供 StatusBar 使用）
   const wordCount = activeTab ? countWords(activeTab.content) : 0;
@@ -672,6 +692,8 @@ function App() {
                 fileType={fileType}
                 mdMode={mdMode}
                 onMdModeChange={setMdMode}
+                indexStatus={indexStatus}
+                buildIndexing={buildIndexing}
               />
             )}
           </main>

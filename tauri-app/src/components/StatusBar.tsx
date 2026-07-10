@@ -4,6 +4,8 @@ interface StatusBarProps {
   fileType: string;
   mdMode?: "preview" | "source";
   onMdModeChange?: (mode: "preview" | "source") => void;
+  indexStatus?: { indexed: boolean; chunks: number; built_at: string };
+  buildIndexing?: boolean;
 }
 
 export default function StatusBar({
@@ -12,12 +14,32 @@ export default function StatusBar({
   fileType,
   mdMode,
   onMdModeChange,
+  indexStatus,
+  buildIndexing,
 }: StatusBarProps) {
   if (!filePath) return null;
 
   return (
     <div className="status-bar">
-      <div className="status-bar-left" />
+      <div className="status-bar-left">
+        {indexStatus && (
+          <span
+            className="status-bar-index"
+            title={
+              buildIndexing
+                ? "正在构建 RAG 索引..."
+                : indexStatus.indexed
+                  ? `RAG 索引已建立（${indexStatus.chunks} 个片段）`
+                  : "未建立 RAG 索引"
+            }
+          >
+            <span
+              className={`index-dot ${buildIndexing ? "building" : indexStatus.indexed ? "indexed" : ""}`}
+            />
+            {buildIndexing && <span className="index-label">索引中...</span>}
+          </span>
+        )}
+      </div>
       <div className="status-bar-right">
         {fileType === "markdown" && mdMode && onMdModeChange && (
           <div className="status-bar-group">

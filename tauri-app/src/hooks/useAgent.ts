@@ -321,10 +321,15 @@ export function useAgent() {
           { role: "user", content: userMessage },
         ];
 
+        const body: Record<string, unknown> = { messages: chatMessages };
+        if (projectRootRef.current) {
+          body.project_root = projectRootRef.current;
+        }
+
         const response = await fetch(`${HTTP_URL}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: chatMessages }),
+          body: JSON.stringify(body),
         });
 
         const data = await response.json();
