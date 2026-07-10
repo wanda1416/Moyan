@@ -2,16 +2,22 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { FileNode } from "../types";
 
+interface TabInfo {
+  path: string;
+  md_mode?: string;
+}
+
 interface ProjectState {
   expanded_paths: string[];
   current_file: string | null;
+  open_tabs: TabInfo[];
 }
 
 interface FileTreeProps {
   projectRoot: string;
   onFileSelect: (path: string) => void;
   onExpandedChange?: (paths: Set<string>) => void;
-  onReady?: (savedFile: string | null) => void;
+  onReady?: (savedFile: string | null, openTabs: TabInfo[]) => void;
   getCurrentFile?: () => string | null;
 }
 
@@ -113,7 +119,7 @@ export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, 
           onExpandedChange?.(initial);
         }
         // 通知 App 恢复文件
-        onReady?.(state.current_file);
+        onReady?.(state.current_file, state.open_tabs || []);
       })
       .catch(console.error);
   }, [projectRoot]);

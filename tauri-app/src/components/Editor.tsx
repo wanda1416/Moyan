@@ -9,11 +9,12 @@ interface EditorProps {
   content: string;
   onChange: (value: string) => void;
   theme?: "light" | "dark";
+  mdMode?: "preview" | "source";
 }
 
-type FileType = "text" | "markdown" | "image" | "unknown";
+export type FileType = "text" | "markdown" | "image" | "unknown";
 
-function getFileType(path: string | null): FileType {
+export function getFileType(path: string | null): FileType {
   if (!path) return "unknown";
   const ext = path.split(".").pop()?.toLowerCase() || "";
   if (["md", "markdown"].includes(ext)) return "markdown";
@@ -32,10 +33,6 @@ function getMimeType(path: string): string {
   return map[ext] || "application/octet-stream";
 }
 
-function getFileName(path: string): string {
-  return path.split(/[\\/]/).pop() || path;
-}
-
 function getLanguage(fileType: FileType, path: string): string {
   if (fileType === "markdown") return "markdown";
   const ext = path.split(".").pop()?.toLowerCase() || "";
@@ -51,7 +48,7 @@ function getLanguage(fileType: FileType, path: string): string {
   return langMap[ext] || "plaintext";
 }
 
-function countWords(text: string): number {
+export function countWords(text: string): number {
   // 中文字符数 + 英文单词数
   const chinese = (text.match(/[\u4e00-\u9fff]/g) || []).length;
   const english = text.replace(/[\u4e00-\u9fff]/g, " ")
@@ -60,12 +57,10 @@ function countWords(text: string): number {
   return chinese + english;
 }
 
-export default function Editor({ filePath, content, onChange, theme = "light" }: EditorProps) {
-  const [mdMode, setMdMode] = useState<"preview" | "source">("preview");
+export default function Editor({ filePath, content, onChange, theme = "light", mdMode = "preview" }: EditorProps) {
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wordCount, setWordCount] = useState(0);
 
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -73,11 +68,6 @@ export default function Editor({ filePath, content, onChange, theme = "light" }:
   onChangeRef.current = onChange;
 
   const fileType = getFileType(filePath);
-
-  // 字数统计
-  useEffect(() => {
-    setWordCount(countWords(content));
-  }, [content]);
 
   // 初始化 Monaco Editor
   useEffect(() => {
@@ -155,13 +145,6 @@ export default function Editor({ filePath, content, onChange, theme = "light" }:
       });
   }, [filePath, fileType]);
 
-  // 重置 markdown 模式为预览
-  useEffect(() => {
-    if (fileType === "markdown") {
-      setMdMode("preview");
-    }
-  }, [filePath, fileType]);
-
   // 空状态
   if (!filePath) {
     return (
@@ -173,101 +156,46 @@ export default function Editor({ filePath, content, onChange, theme = "light" }:
 
   // 加载中
   if (loading) {
-    return (
-      <div className="editor-wrapper">
-        <div className="editor-tab">
-          <span className="tab-filename">{getFileName(filePath)}</span>
-        </div>
-        <div className="editor-loading">加载中...</div>
-      </div>
-    );
+    return <div className="editor-loading">加载中...</div>;
   }
 
   // 错误
   if (error) {
-    return (
-      <div className="editor-wrapper">
-        <div className="editor-tab">
-          <span className="tab-filename">{getFileName(filePath)}</span>
-        </div>
-        <div className="editor-error">{error}</div>
-      </div>
-    );
+    return <div className="editor-error">{error}</div>;
   }
 
   // 图片预览
   if (fileType === "image" && imageData) {
     return (
-      <div className="editor-wrapper">
-        <div className="editor-tab">
-          <span className="tab-filename">{getFileName(filePath)}</span>
-          <span className="tab-info">图片预览</span>
-        </div>
-        <div className="image-preview-container">
-          <img src={imageData} alt={getFileName(filePath)} className="image-preview" />
-        </div>
+      <div className="image-preview-container">
+        <img src={imageData} alt={filePath.split(/[\\/]/).pop()} className="image-preview" />
       </div>
     );
   }
 
   // Markdown 文件
   if (fileType === "markdown") {
-    return (
-      <div className="editor-wrapper">
-        <div className="editor-tab">
-          <span className="tab-filename">{getFileName(filePath)}</span>
-          <div className="tab-actions">
-            <button
-              className={`tab-btn ${mdMode === "preview" ? "active" : ""}`}
-              onClick={() => setMdMode("preview")}
-            >
-              预览
-            </button>
-            <button
-              className={`tab-btn ${mdMode === "source" ? "active" : ""}`}
-              onClick={() => setMdMode("source")}
-            >
-              源码
-            </button>
-          </div>
-          <span className="tab-info">{wordCount.toLocaleString()} 字</span>
-        </div>
-        {mdMode === "preview" ? (
-          <div className="markdown-preview">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <div ref={editorContainerRef} className="monaco-container" />
-        )}
+    return mdMode === "preview" ? (
+      <div className="markdown-preview">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {content}
+        </ReactMarkdown>
       </div>
+    ) : (
+      <div ref={editorContainerRef} className="monaco-container" />
     );
   }
 
   // 普通文本文件
   if (fileType === "text") {
-    return (
-      <div className="editor-wrapper">
-        <div className="editor-tab">
-          <span className="tab-filename">{getFileName(filePath)}</span>
-          <span className="tab-info">{wordCount.toLocaleString()} 字</span>
-        </div>
-        <div ref={editorContainerRef} className="monaco-container" />
-      </div>
-    );
+    return <div ref={editorContainerRef} className="monaco-container" />;
   }
 
   // 未知文件类型
   return (
-    <div className="editor-wrapper">
-      <div className="editor-tab">
-        <span className="tab-filename">{getFileName(filePath)}</span>
-      </div>
-      <div className="editor-placeholder">
-        <p>不支持预览此文件类型</p>
-        <p className="hint">{filePath}</p>
-      </div>
+    <div className="editor-placeholder">
+      <p>不支持预览此文件类型</p>
+      <p className="hint">{filePath}</p>
     </div>
   );
 }

@@ -178,11 +178,24 @@ html, body, #root {
 }
 
 .sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
   background: var(--bg-secondary);
-  border-right: 1px solid var(--border);
   overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* 面板拖拽调整手柄 */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: var(--accent);
+  opacity: 0.5;
 }
 
 .editor-area {
@@ -193,12 +206,10 @@ html, body, #root {
 }
 
 .agent-panel {
-  width: var(--agent-panel-width);
-  min-width: var(--agent-panel-width);
   background: var(--bg-secondary);
-  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 /* === 文件树 === */
@@ -246,7 +257,7 @@ html, body, #root {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex: 1;
   color: var(--text-secondary);
   font-size: 14px;
   gap: 8px;
@@ -259,59 +270,137 @@ html, body, #root {
   max-width: 80%;
   text-align: center;
 }
-.editor-wrapper {
+
+/* === 标签栏 === */
+.tab-bar {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.editor-tab {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
+  align-items: stretch;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-secondary);
-  min-height: 36px;
-}
-.tab-filename {
-  font-weight: 500;
-  color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.tab-info {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-left: 8px;
+  min-height: 34px;
+  overflow-x: auto;
+  overflow-y: hidden;
   flex-shrink: 0;
 }
-.tab-actions {
+.tab-bar::-webkit-scrollbar {
+  height: 3px;
+}
+.tab-bar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+.tab-item {
   display: flex;
-  gap: 2px;
-  margin-left: auto;
-}
-.tab-btn {
-  background: none;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
   font-size: 12px;
-  padding: 3px 10px;
-  border-radius: 4px;
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.15s;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  user-select: none;
+  position: relative;
+  transition: background 0.1s, color 0.1s;
 }
-.tab-btn:hover {
+.tab-item:hover {
   background: var(--bg-primary);
   color: var(--text-primary);
 }
-.tab-btn.active {
+.tab-item.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.tab-item.active::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.tab-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+.tab-dirty {
+  font-size: 8px;
+  color: var(--accent);
+  margin-left: 2px;
+  vertical-align: middle;
+}
+.tab-item-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  line-height: 1;
+}
+.tab-item:hover .tab-item-close,
+.tab-item.active .tab-item-close {
+  opacity: 1;
+}
+.tab-item-close:hover {
+  background: var(--danger, #e53935);
+  color: #fff;
+}
+
+/* === 状态栏 === */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-height: 26px;
+  flex-shrink: 0;
+}
+.status-bar-left {
+  flex: 1;
+}
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.status-bar-group {
+  display: flex;
+  gap: 2px;
+}
+.status-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.status-btn:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.status-btn.active {
   background: var(--accent);
   color: var(--bg-primary);
   border-color: var(--accent);
 }
+.status-bar-info {
+  white-space: nowrap;
+}
+
 .editor-container {
   flex: 1;
   min-height: 0;
