@@ -1,6 +1,6 @@
 """
 应用配置
-支持从 ~/.moyan/config.json 读写，持久化 LLM 等配置
+支持从 ~/.moyan/settings.json 读写，持久化 LLM 等配置
 """
 
 import json
@@ -18,7 +18,7 @@ def get_moyan_dir() -> Path:
 
 def get_config_path() -> Path:
     """获取配置文件路径"""
-    return get_moyan_dir() / "config.json"
+    return get_moyan_dir() / "settings.json"
 
 
 @dataclass
@@ -98,7 +98,7 @@ class Settings:
         return "llama3"
 
     def load(self):
-        """从 ~/.moyan/config.json 加载配置（覆盖默认值）"""
+        """从 ~/.moyan/settings.json 加载配置（覆盖默认值）"""
         config_path = get_config_path()
         if not config_path.exists():
             logger.info(f"配置文件不存在: {config_path}，使用默认配置")
@@ -169,7 +169,7 @@ class Settings:
         logger.info(f"配置已迁移并保存: {config_path}")
 
     def save(self):
-        """保存配置到 ~/.moyan/config.json（合并写入，不覆盖其他字段）"""
+        """保存配置到 ~/.moyan/settings.json（合并写入，不覆盖其他字段）"""
         config_path = get_config_path()
 
         # 读取现有配置

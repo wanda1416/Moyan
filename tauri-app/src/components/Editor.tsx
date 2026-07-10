@@ -8,6 +8,7 @@ interface EditorProps {
   filePath: string | null;
   content: string;
   onChange: (value: string) => void;
+  theme?: "light" | "dark";
 }
 
 type FileType = "text" | "markdown" | "image" | "unknown";
@@ -59,7 +60,7 @@ function countWords(text: string): number {
   return chinese + english;
 }
 
-export default function Editor({ filePath, content, onChange }: EditorProps) {
+export default function Editor({ filePath, content, onChange, theme = "light" }: EditorProps) {
   const [mdMode, setMdMode] = useState<"preview" | "source">("preview");
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -93,7 +94,7 @@ export default function Editor({ filePath, content, onChange }: EditorProps) {
     const editor = monaco.editor.create(editorContainerRef.current, {
       value: content,
       language: getLanguage(fileType, filePath || ""),
-      theme: "vs-dark",
+      theme: theme === "dark" ? "vs-dark" : "vs",
       automaticLayout: true,
       minimap: { enabled: false },
       fontSize: 14,
@@ -116,7 +117,7 @@ export default function Editor({ filePath, content, onChange }: EditorProps) {
       editor.dispose();
       editorRef.current = null;
     };
-  }, [filePath, fileType, mdMode]);
+  }, [filePath, fileType, mdMode, theme]);
 
   // 更新内容（外部变化时同步到 Monaco）
   useEffect(() => {

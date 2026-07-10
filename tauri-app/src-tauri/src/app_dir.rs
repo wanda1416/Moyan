@@ -4,6 +4,10 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use chrono::Local;
 
+// ============================================================
+// 路径管理
+// ============================================================
+
 /// 获取 ~/.moyan 目录路径
 pub fn get_moyan_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法获取用户主目录".to_string())?;
@@ -15,12 +19,53 @@ pub fn get_projects_dir() -> Result<PathBuf, String> {
     Ok(get_moyan_dir()?.join("projects"))
 }
 
-/// 应用初始化：确保 ~/.moyan 目录结构存在
+/// 获取 ~/.moyan/settings.json 路径（用户设置）
+fn get_settings_path() -> Result<PathBuf, String> {
+    Ok(get_moyan_dir()?.join("settings.json"))
+}
+
+/// 获取 ~/.moyan/workspace.json 路径（工作区上下文）
+fn get_workspace_path() -> Result<PathBuf, String> {
+    Ok(get_moyan_dir()?.join("workspace.json"))
+}
+
+/// 获取 ~/.moyan/config.json 路径（旧配置，迁移用）
+fn get_old_config_path() -> Result<PathBuf, String> {
+    Ok(get_moyan_dir()?.join("config.json"))
+}
+
+/// 获取 ~/.moyan/state.json 路径（旧状态，迁移用）
+fn get_old_state_path() -> Result<PathBuf, String> {
+    Ok(get_moyan_dir()?.join("state.json"))
+}
+
+/// 项目路径转 UID（用于 project-{uid}.json 文件名）
+fn project_path_to_uid(path: &str) -> String {
+    // 使用简单的 hash 避免路径中的特殊字符
+    let mut hash: u64 = 5381;
+    for byte in path.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
+    }
+    format!("{:016x}", hash)
+}
+
+/// 获取项目状态文件路径 ~/.moyan/projects/project-{uid}.json
+fn get_project_state_path(project_path: &str) -> Result<PathBuf, String> {
+    let uid = project_path_to_uid(project_path);
+    Ok(get_projects_dir()?.join(format!("project-{}.json", uid)))
+}
+
+// ============================================================
+// 应用初始化 + 迁移
+// ============================================================
+
+/// 应用初始化：确保 ~/.moyan 目录结构存在，执行旧配置迁移
 #[tauri::command]
 pub fn init_app_dir() -> Result<AppDirInfo, String> {
     let moyan_dir = get_moyan_dir()?;
     let projects_dir = get_projects_dir()?;
-    let config_path = moyan_dir.join("config.json");
+    let settings_path = get_settings_path()?;
+    let workspace_path = get_workspace_path()?;
 
     // 创建目录结构
     if !moyan_dir.exists() {
@@ -30,12 +75,22 @@ pub fn init_app_dir() -> Result<AppDirInfo, String> {
         std::fs::create_dir_all(&projects_dir).map_err(|e| e.to_string())?;
     }
 
-    // 创建默认配置文件
-    if !config_path.exists() {
-        let default_config = serde_json::json!({
-            "recent_projects": [],
-            "python_host": "127.0.0.1",
-            "python_port": 8765,
+    // 迁移旧 config.json -> settings.json + workspace.json
+    let old_config_path = get_old_config_path()?;
+    if old_config_path.exists() && !settings_path.exists() {
+        let _ = migrate_old_config(&old_config_path, &settings_path, &workspace_path);
+    }
+
+    // 迁移旧 state.json -> project-{uid}.json
+    let old_state_path = get_old_state_path()?;
+    if old_state_path.exists() {
+        let _ = migrate_old_state(&old_state_path, &projects_dir);
+    }
+
+    // 创建默认 settings.json
+    if !settings_path.exists() {
+        let default_settings = serde_json::json!({
+            "theme": "light",
             "active_provider_id": "provider_1",
             "llm_providers": [
                 {
@@ -44,56 +99,174 @@ pub fn init_app_dir() -> Result<AppDirInfo, String> {
                     "provider": "openai",
                     "api_key": "",
                     "base_url": "https://api.openai.com/v1",
-                    "model": "gpt-4o"
+                    "model": "gpt-4o",
+                    "proxy": "",
+                    "use_proxy": false
                 }
             ]
         });
-        let content = serde_json::to_string_pretty(&default_config).map_err(|e| e.to_string())?;
-        std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+        let content = serde_json::to_string_pretty(&default_settings).map_err(|e| e.to_string())?;
+        std::fs::write(&settings_path, content).map_err(|e| e.to_string())?;
+    }
+
+    // 创建默认 workspace.json
+    if !workspace_path.exists() {
+        let default_workspace = serde_json::json!({
+            "recent_projects": [],
+            "last_project": null
+        });
+        let content = serde_json::to_string_pretty(&default_workspace).map_err(|e| e.to_string())?;
+        std::fs::write(&workspace_path, content).map_err(|e| e.to_string())?;
     }
 
     Ok(AppDirInfo {
         moyan_dir: moyan_dir.to_string_lossy().to_string(),
         projects_dir: projects_dir.to_string_lossy().to_string(),
-        config_path: config_path.to_string_lossy().to_string(),
+        config_path: settings_path.to_string_lossy().to_string(),
     })
 }
 
-/// 读取应用配置
+/// 迁移旧 config.json 到 settings.json + workspace.json
+fn migrate_old_config(old_path: &PathBuf, settings_path: &PathBuf, workspace_path: &PathBuf) -> Result<(), String> {
+    let content = std::fs::read_to_string(old_path).map_err(|e| e.to_string())?;
+    let old: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    // 提取 workspace 数据
+    let workspace = serde_json::json!({
+        "recent_projects": old.get("recent_projects").cloned().unwrap_or_else(|| serde_json::json!([])),
+        "last_project": null
+    });
+    let ws_content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(workspace_path, ws_content).map_err(|e| e.to_string())?;
+
+    // 提取 settings 数据（LLM 配置 + 主题）
+    let mut settings = serde_json::json!({
+        "theme": "light",
+        "active_provider_id": old.get("active_provider_id").cloned().unwrap_or_else(|| serde_json::json!("provider_1")),
+        "llm_providers": old.get("llm_providers").cloned().unwrap_or_else(|| serde_json::json!([]))
+    });
+
+    // 迁移旧格式 LLM 配置
+    if settings["llm_providers"].as_array().map_or(true, |a| a.is_empty()) {
+        if let Some(provider) = old.get("llm_provider") {
+            let entry = serde_json::json!([{
+                "id": "provider_1",
+                "name": match provider.as_str().unwrap_or("openai") {
+                    "claude" => "Claude",
+                    "ollama" => "Ollama",
+                    _ => "OpenAI",
+                },
+                "provider": provider.as_str().unwrap_or("openai"),
+                "api_key": old.get("llm_api_key").unwrap_or(&serde_json::json!("")),
+                "base_url": old.get("llm_base_url").unwrap_or(&serde_json::json!("")),
+                "model": old.get("llm_model").unwrap_or(&serde_json::json!("gpt-4o")),
+                "proxy": "",
+                "use_proxy": false
+            }]);
+            settings["llm_providers"] = entry;
+        }
+    }
+
+    if let Some(theme) = old.get("theme") {
+        settings["theme"] = theme.clone();
+    }
+
+    let st_content = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(settings_path, st_content).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// 迁移旧 state.json 到 project-{uid}.json
+fn migrate_old_state(old_path: &PathBuf, projects_dir: &PathBuf) -> Result<(), String> {
+    let content = std::fs::read_to_string(old_path).map_err(|e| e.to_string())?;
+    let old: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+
+    // 迁移 last_project
+    if let Some(last) = old.get("last_project").and_then(|v| v.as_str()) {
+        let workspace_path = get_workspace_path()?;
+        let mut workspace: serde_json::Value = if workspace_path.exists() {
+            let ws_content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+            serde_json::from_str(&ws_content).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        workspace["last_project"] = serde_json::Value::String(last.to_string());
+        let ws_content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+        std::fs::write(&workspace_path, ws_content).map_err(|e| e.to_string())?;
+    }
+
+    // 迁移 project_states
+    if let Some(states) = old.get("project_states").and_then(|v| v.as_object()) {
+        for (path, state) in states {
+            let uid = project_path_to_uid(path);
+            let file_path = projects_dir.join(format!("project-{}.json", uid));
+            let state_content = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
+            let _ = std::fs::write(&file_path, state_content);
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================
+// Settings（用户设置）
+// ============================================================
+
+/// 读取用户设置
 #[tauri::command]
-pub fn read_app_config() -> Result<serde_json::Value, String> {
-    let config_path = get_moyan_dir()?.join("config.json");
-    if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+pub fn get_settings() -> Result<serde_json::Value, String> {
+    let settings_path = get_settings_path()?;
+    if settings_path.exists() {
+        let content = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).map_err(|e| e.to_string())
     } else {
         Ok(serde_json::json!({}))
     }
 }
 
-/// 保存应用配置
+/// 保存用户设置
 #[tauri::command]
-pub fn write_app_config(config: String) -> Result<(), String> {
-    let config_path = get_moyan_dir()?.join("config.json");
-    // 验证 JSON 格式
-    let _: serde_json::Value = serde_json::from_str(&config).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, config).map_err(|e| e.to_string())
+pub fn save_settings(settings: String) -> Result<(), String> {
+    let settings_path = get_settings_path()?;
+    let _: serde_json::Value = serde_json::from_str(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, settings).map_err(|e| e.to_string())
+}
+
+// ============================================================
+// Workspace（工作区上下文）
+// ============================================================
+
+/// 获取最近项目列表
+#[tauri::command]
+pub fn get_recent_projects() -> Result<Vec<String>, String> {
+    let workspace_path = get_workspace_path()?;
+    if !workspace_path.exists() {
+        return Ok(vec![]);
+    }
+    let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+    let workspace: serde_json::Value = serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}));
+    let recent = workspace["recent_projects"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    Ok(recent)
 }
 
 /// 添加最近项目记录
 #[tauri::command]
 pub fn add_recent_project(project_path: String) -> Result<(), String> {
-    let config_path = get_moyan_dir()?.join("config.json");
+    let workspace_path = get_workspace_path()?;
 
-    let mut config: serde_json::Value = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let mut workspace: serde_json::Value = if workspace_path.exists() {
+        let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
 
-    let recent = config["recent_projects"]
-        .as_array_mut()
+    let recent = workspace["recent_projects"]
+        .as_array()
         .map(|a| a.clone())
         .unwrap_or_default();
 
@@ -106,16 +279,96 @@ pub fn add_recent_project(project_path: String) -> Result<(), String> {
 
     // 最多保留 10 个
     new_recent.truncate(10);
-    config["recent_projects"] = serde_json::Value::Array(new_recent);
+    workspace["recent_projects"] = serde_json::Value::Array(new_recent);
 
-    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, content).map_err(|e| e.to_string())
+    let content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(&workspace_path, content).map_err(|e| e.to_string())
 }
 
-/// 获取 ~/.moyan/state.json 路径（项目状态存储）
-fn get_state_path() -> Result<PathBuf, String> {
-    Ok(get_moyan_dir()?.join("state.json"))
+/// 从最近项目列表移除
+#[tauri::command]
+pub fn remove_recent_project(project_path: String) -> Result<(), String> {
+    let workspace_path = get_workspace_path()?;
+
+    let mut workspace: serde_json::Value = if workspace_path.exists() {
+        let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let recent = workspace["recent_projects"]
+        .as_array()
+        .map(|a| a.clone())
+        .unwrap_or_default();
+
+    let new_recent: Vec<serde_json::Value> = recent
+        .into_iter()
+        .filter(|p| p.as_str() != Some(&project_path))
+        .collect();
+
+    workspace["recent_projects"] = serde_json::Value::Array(new_recent);
+
+    // 如果移除的是 last_project，也清除
+    if workspace["last_project"].as_str() == Some(&project_path) {
+        workspace["last_project"] = serde_json::Value::Null;
+    }
+
+    let content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(&workspace_path, content).map_err(|e| e.to_string())
 }
+
+/// 获取上次打开的项目路径
+#[tauri::command]
+pub fn get_last_project() -> Result<Option<String>, String> {
+    let workspace_path = get_workspace_path()?;
+    if !workspace_path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+    let workspace: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    Ok(workspace["last_project"].as_str().map(String::from))
+}
+
+/// 保存上次打开的项目路径
+#[tauri::command]
+pub fn set_last_project(project_path: String) -> Result<(), String> {
+    let workspace_path = get_workspace_path()?;
+
+    let mut workspace: serde_json::Value = if workspace_path.exists() {
+        let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    workspace["last_project"] = serde_json::Value::String(project_path);
+
+    let content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(&workspace_path, content).map_err(|e| e.to_string())
+}
+
+/// 清除上次打开的项目路径
+#[tauri::command]
+pub fn clear_last_project() -> Result<(), String> {
+    let workspace_path = get_workspace_path()?;
+
+    let mut workspace: serde_json::Value = if workspace_path.exists() {
+        let content = std::fs::read_to_string(&workspace_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    workspace["last_project"] = serde_json::Value::Null;
+
+    let content = serde_json::to_string_pretty(&workspace).map_err(|e| e.to_string())?;
+    std::fs::write(&workspace_path, content).map_err(|e| e.to_string())
+}
+
+// ============================================================
+// Project State（项目内状态）
+// ============================================================
 
 /// 项目状态（展开路径 + 当前文件）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,40 +377,31 @@ pub struct ProjectState {
     pub current_file: Option<String>,
 }
 
-/// 保存项目状态（目录树展开 + 当前打开文件）
+/// 保存项目状态到 projects/project-{uid}.json
 #[tauri::command]
 pub fn save_tree_state(
     project_path: String,
     expanded_paths: Vec<String>,
     current_file: Option<String>,
 ) -> Result<(), String> {
-    let state_path = get_state_path()?;
-
-    let mut state: serde_json::Value = if state_path.exists() {
-        let content = std::fs::read_to_string(&state_path).map_err(|e| e.to_string())?;
-        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
-    } else {
-        serde_json::json!({})
-    };
-
-    if state.get("project_states").is_none() {
-        state["project_states"] = serde_json::json!({});
+    let state_path = get_project_state_path(&project_path)?;
+    let projects_dir = get_projects_dir()?;
+    if !projects_dir.exists() {
+        std::fs::create_dir_all(&projects_dir).map_err(|e| e.to_string())?;
     }
 
-    let project_state = serde_json::json!({
+    let state = serde_json::json!({
         "expanded_paths": expanded_paths,
         "current_file": current_file,
     });
-    state["project_states"][&project_path] = project_state;
-
     let content = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
     std::fs::write(&state_path, content).map_err(|e| e.to_string())
 }
 
-/// 加载项目状态（展开路径 + 当前文件）
+/// 加载项目状态从 projects/project-{uid}.json
 #[tauri::command]
 pub fn load_tree_state(project_path: String) -> Result<ProjectState, String> {
-    let state_path = get_state_path()?;
+    let state_path = get_project_state_path(&project_path)?;
 
     if !state_path.exists() {
         return Ok(ProjectState {
@@ -169,27 +413,23 @@ pub fn load_tree_state(project_path: String) -> Result<ProjectState, String> {
     let content = std::fs::read_to_string(&state_path).map_err(|e| e.to_string())?;
     let state: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-    let project_state = &state["project_states"][&project_path];
-
-    if project_state.is_object() {
-        let expanded_paths = project_state["expanded_paths"]
-            .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-            .unwrap_or_default();
-        let current_file = project_state["current_file"]
-            .as_str()
-            .map(String::from);
-        return Ok(ProjectState {
-            expanded_paths,
-            current_file,
-        });
-    }
+    let expanded_paths = state["expanded_paths"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let current_file = state["current_file"]
+        .as_str()
+        .map(String::from);
 
     Ok(ProjectState {
-        expanded_paths: vec![],
-        current_file: None,
+        expanded_paths,
+        current_file,
     })
 }
+
+// ============================================================
+// LLM 配置（读写 settings.json 中的 LLM 部分）
+// ============================================================
 
 /// 目录信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,29 +444,28 @@ pub struct AppDirInfo {
 pub struct LLMProviderEntry {
     pub id: String,
     pub name: String,
-    pub provider: String,       // "openai" | "claude" | "ollama" | "gemini"
+    pub provider: String,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
     #[serde(default)]
-    pub proxy: String,          // HTTP 代理地址，如 http://127.0.0.1:7890
+    pub proxy: String,
     #[serde(default)]
-    pub use_proxy: bool,        // 是否启用代理
+    pub use_proxy: bool,
 }
 
-/// LLM 配置结构（多供应商 + 激活项）
+/// LLM 配置结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMConfig {
     pub active_provider_id: String,
     pub providers: Vec<LLMProviderEntry>,
 }
 
-/// 获取 LLM 配置（从 ~/.moyan/config.json 读取，自动迁移旧格式）
+/// 获取 LLM 配置（从 settings.json 读取）
 #[tauri::command]
 pub fn get_config() -> Result<LLMConfig, String> {
-    let config_path = get_moyan_dir()?.join("config.json");
+    let settings_path = get_settings_path()?;
 
-    // 默认配置：一个 OpenAI 供应商
     let default_config = LLMConfig {
         active_provider_id: "provider_1".to_string(),
         providers: vec![LLMProviderEntry {
@@ -241,146 +480,47 @@ pub fn get_config() -> Result<LLMConfig, String> {
         }],
     };
 
-    if !config_path.exists() {
+    if !settings_path.exists() {
         return Ok(default_config);
     }
 
-    let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let content = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}));
 
-    // 检测新格式
-    if json.get("llm_providers").is_some() && json.get("active_provider_id").is_some() {
-        let providers: Vec<LLMProviderEntry> = json["llm_providers"]
+    if let (Some(providers_val), Some(active_id)) = (json.get("llm_providers"), json.get("active_provider_id")) {
+        let providers: Vec<LLMProviderEntry> = providers_val
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| {
-                        serde_json::from_value(v.clone()).ok()
-                    })
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect())
             .unwrap_or_default();
 
-        if providers.is_empty() {
-            return Ok(default_config);
+        if !providers.is_empty() {
+            return Ok(LLMConfig {
+                active_provider_id: active_id.as_str().unwrap_or("provider_1").to_string(),
+                providers,
+            });
         }
-
-        let active_id = json["active_provider_id"]
-            .as_str()
-            .unwrap_or("provider_1")
-            .to_string();
-
-        return Ok(LLMConfig {
-            active_provider_id: active_id,
-            providers,
-        });
     }
 
-    // 旧格式迁移：将 llm_provider/llm_model 等字段转为第一个 provider entry
-    let old_provider = json["llm_provider"].as_str().unwrap_or("openai");
-    let old_model = json["llm_model"].as_str().unwrap_or("gpt-4");
-    let old_api_key = json["llm_api_key"].as_str().unwrap_or("");
-    let old_base_url = json["llm_base_url"].as_str().unwrap_or("");
-    let ollama_base_url = json["ollama_base_url"].as_str().unwrap_or("http://localhost:11434");
-    let ollama_model = json["ollama_model"].as_str().unwrap_or("llama3");
-
-    let mut providers = vec![];
-
-    // 非 Ollama 的旧配置转为第一个 entry
-    if old_provider != "ollama" {
-        providers.push(LLMProviderEntry {
-            id: "provider_1".to_string(),
-            name: match old_provider {
-                "claude" => "Claude".to_string(),
-                _ => "OpenAI".to_string(),
-            },
-            provider: old_provider.to_string(),
-            api_key: if old_api_key.is_empty() {
-                String::new()
-            } else {
-                "***".to_string()
-            },
-            base_url: old_base_url.to_string(),
-            model: old_model.to_string(),
-            proxy: String::new(),
-            use_proxy: false,
-        });
-    }
-
-    // Ollama 配置转为第二个 entry（如果有）
-    let ollama_id = if providers.is_empty() { "provider_1" } else { "provider_2" };
-    providers.push(LLMProviderEntry {
-        id: ollama_id.to_string(),
-        name: "Ollama".to_string(),
-        provider: "ollama".to_string(),
-        api_key: String::new(),
-        base_url: ollama_base_url.to_string(),
-        model: ollama_model.to_string(),
-        proxy: String::new(),
-        use_proxy: false,
-    });
-
-    let active_id = if old_provider == "ollama" {
-        ollama_id.to_string()
-    } else {
-        "provider_1".to_string()
-    };
-
-    // 自动写回新格式
-    let new_json = serde_json::json!({
-        "recent_projects": json.get("recent_projects").cloned().unwrap_or_else(|| serde_json::json!([])),
-        "python_host": json.get("python_host").cloned().unwrap_or_else(|| serde_json::json!("127.0.0.1")),
-        "python_port": json.get("python_port").cloned().unwrap_or_else(|| serde_json::json!(8765)),
-        "active_provider_id": active_id,
-        "llm_providers": providers.iter().map(|p| {
-            serde_json::json!({
-                "id": p.id,
-                "name": p.name,
-                "provider": p.provider,
-                "api_key": if p.api_key == "***" { serde_json::Value::String(old_api_key.to_string()) } else { serde_json::Value::String(p.api_key.clone()) },
-                "base_url": p.base_url,
-                "model": p.model,
-            })
-        }).collect::<Vec<_>>(),
-    });
-    let new_content = serde_json::to_string_pretty(&new_json).map_err(|e| e.to_string())?;
-    let _ = std::fs::write(&config_path, new_content);
-
-    Ok(LLMConfig {
-        active_provider_id: active_id,
-        providers,
-    })
+    Ok(default_config)
 }
 
-/// 保存 LLM 配置（写入文件 + 同步到 Python 后端内存）
+/// 保存 LLM 配置（写入 settings.json + 同步到 Python 后端）
 #[tauri::command]
 pub async fn save_config(config: LLMConfig) -> Result<String, String> {
-    let config_path = get_moyan_dir()?.join("config.json");
+    let settings_path = get_settings_path()?;
 
-    // 读取现有配置（保留非 LLM 字段）
-    let mut json: serde_json::Value = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let mut json: serde_json::Value = if settings_path.exists() {
+        let content = std::fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
 
-    // 写入新格式
     json["active_provider_id"] = serde_json::Value::String(config.active_provider_id.clone());
     json["llm_providers"] = serde_json::to_value(&config.providers).map_err(|e| e.to_string())?;
 
-    // 清理旧格式字段（迁移后不再需要）
-    json.as_object_mut().map(|obj| {
-        obj.remove("llm_provider");
-        obj.remove("llm_model");
-        obj.remove("llm_base_url");
-        obj.remove("llm_api_key");
-        obj.remove("ollama_base_url");
-        obj.remove("ollama_model");
-    });
-
     let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    std::fs::write(&settings_path, content).map_err(|e| e.to_string())?;
 
     // 同步到 Python 后端
     let sync_payload = serde_json::json!({
@@ -393,7 +533,6 @@ pub async fn save_config(config: LLMConfig) -> Result<String, String> {
                 "base_url": p.base_url,
                 "model": p.model,
             });
-            // API Key 只在非掩码时同步
             if p.api_key != "***" && !p.api_key.is_empty() {
                 entry["api_key"] = serde_json::Value::String(p.api_key.clone());
             }
@@ -415,7 +554,11 @@ pub async fn save_config(config: LLMConfig) -> Result<String, String> {
     }
 }
 
-/// 测试 LLM 连接（代理到 Python 后端的 /api/test_llm 端点）
+// ============================================================
+// LLM 连接测试 & 模型列表
+// ============================================================
+
+/// 测试 LLM 连接
 #[tauri::command]
 pub async fn test_llm_connection(entry: LLMProviderEntry) -> Result<String, String> {
     let mut payload = serde_json::json!({
@@ -439,19 +582,11 @@ pub async fn test_llm_connection(entry: LLMProviderEntry) -> Result<String, Stri
         .await
         .map_err(|e| format!("无法连接 Python 后端: {}", e))?;
 
-    // 检查 HTTP 状态，避免解析 HTML 错误页
     if !resp.status().is_success() {
-        return Err(format!(
-            "Python 后端返回 HTTP {}，请确认后端已重启并加载最新代码",
-            resp.status()
-        ));
+        return Err(format!("Python 后端返回 HTTP {}", resp.status()));
     }
 
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
-
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
     let status = body["status"].as_str().unwrap_or("error");
     let message = body["message"].as_str().unwrap_or("未知错误");
 
@@ -462,7 +597,7 @@ pub async fn test_llm_connection(entry: LLMProviderEntry) -> Result<String, Stri
     }
 }
 
-/// 获取可用模型列表（代理到 Python 后端的 /api/list_models 端点）
+/// 获取可用模型列表
 #[tauri::command]
 pub async fn list_models(entry: LLMProviderEntry) -> Result<Vec<String>, String> {
     let mut payload = serde_json::json!({
@@ -488,11 +623,7 @@ pub async fn list_models(entry: LLMProviderEntry) -> Result<Vec<String>, String>
         return Err(format!("Python 后端返回 HTTP {}", resp.status()));
     }
 
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
-
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("解析响应失败: {}", e))?;
     let status = body["status"].as_str().unwrap_or("error");
     if status != "ok" {
         let msg = body["message"].as_str().unwrap_or("未知错误");
@@ -501,15 +632,15 @@ pub async fn list_models(entry: LLMProviderEntry) -> Result<Vec<String>, String>
 
     let models = body["models"]
         .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
     Ok(models)
 }
+
+// ============================================================
+// 日志
+// ============================================================
 
 /// 写入前端日志到文件
 #[tauri::command]
@@ -517,7 +648,6 @@ pub fn write_log(level: String, message: String) -> Result<(), String> {
     let moyan_dir = get_moyan_dir()?;
     let log_dir = moyan_dir.join("logs");
 
-    // 确保日志目录存在
     if !log_dir.exists() {
         std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }

@@ -5,19 +5,21 @@ interface WelcomeProps {
   onOpenProject: (path: string) => void;
 }
 
-interface AppConfig {
-  recent_projects?: string[];
-}
-
 export default function Welcome({ onOpenProject }: WelcomeProps) {
   const [recentProjects, setRecentProjects] = useState<string[]>([]);
 
+  // 加载最近项目
+  const loadRecentProjects = async () => {
+    try {
+      const projects = await invoke<string[]>("get_recent_projects");
+      setRecentProjects(projects);
+    } catch (err) {
+      console.error("加载最近项目失败:", err);
+    }
+  };
+
   useEffect(() => {
-    invoke<AppConfig>("read_app_config")
-      .then((config) => {
-        setRecentProjects(config.recent_projects || []);
-      })
-      .catch(console.error);
+    loadRecentProjects();
   }, []);
 
   const handleOpenDirectory = async () => {
@@ -33,6 +35,17 @@ export default function Welcome({ onOpenProject }: WelcomeProps) {
 
   const handleRecentClick = (path: string) => {
     onOpenProject(path);
+  };
+
+  // 从最近项目列表移除
+  const handleRemoveRecent = async (e: React.MouseEvent, path: string) => {
+    e.stopPropagation();
+    try {
+      await invoke("remove_recent_project", { projectPath: path });
+      setRecentProjects((prev) => prev.filter((p) => p !== path));
+    } catch (err) {
+      console.error("移除最近项目失败:", err);
+    }
   };
 
   return (
@@ -58,6 +71,13 @@ export default function Welcome({ onOpenProject }: WelcomeProps) {
                 <li key={project} className="recent-item" onClick={() => handleRecentClick(project)}>
                   <span className="recent-icon">📁</span>
                   <span className="recent-path">{project}</span>
+                  <button
+                    className="recent-remove"
+                    onClick={(e) => handleRemoveRecent(e, project)}
+                    title="从最近项目移除"
+                  >
+                    ✕
+                  </button>
                 </li>
               ))}
             </ul>
@@ -67,3 +87,4 @@ export default function Welcome({ onOpenProject }: WelcomeProps) {
     </div>
   );
 }
+

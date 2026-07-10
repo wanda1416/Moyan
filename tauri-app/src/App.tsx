@@ -42,13 +42,22 @@ function App() {
     } catch {}
   }, [projectRoot]);
 
-  // 加载主题配置
+  // 加载主题配置和上次打开的项目
   useEffect(() => {
     invoke("init_app_dir").catch(console.error);
-    invoke<Record<string, unknown>>("read_app_config").then((config) => {
-      const saved = config?.theme as Theme | undefined;
+    
+    // 加载主题
+    invoke<Record<string, unknown>>("get_settings").then((settings) => {
+      const saved = settings?.theme as Theme | undefined;
       if (saved === "light" || saved === "dark") {
         setTheme(saved);
+      }
+    }).catch(() => {});
+    
+    // 加载上次打开的项目
+    invoke<string | null>("get_last_project").then((lastProject) => {
+      if (lastProject) {
+        setProjectRoot(lastProject);
       }
     }).catch(() => {});
   }, []);
@@ -62,9 +71,9 @@ function App() {
   const handleThemeChange = useCallback(async (newTheme: Theme) => {
     setTheme(newTheme);
     try {
-      const config = await invoke<Record<string, unknown>>("read_app_config");
-      config.theme = newTheme;
-      await invoke("write_app_config", { config: JSON.stringify(config) });
+      const settings = await invoke<Record<string, unknown>>("get_settings");
+      settings.theme = newTheme;
+      await invoke("save_settings", { settings: JSON.stringify(settings) });
     } catch {}
   }, []);
 
@@ -129,9 +138,21 @@ function App() {
     setFileContent("");
     try {
       await invoke("add_recent_project", { projectPath: path });
+      await invoke("set_last_project", { projectPath: path });
     } catch (err) {
       console.error("记录最近项目失败:", err);
     }
+  };
+
+  // 关闭项目
+  const handleCloseProject = async () => {
+    await saveTreeState();
+    setProjectRoot(null);
+    setCurrentFile(null);
+    setFileContent("");
+    try {
+      await invoke("clear_last_project");
+    } catch {}
   };
 
   // 菜单事件处理
@@ -144,7 +165,10 @@ function App() {
           setProjectRoot(path);
           setCurrentFile(null);
           setFileContent("");
-          try { await invoke("add_recent_project", { projectPath: path }); } catch {}
+          try {
+            await invoke("add_recent_project", { projectPath: path });
+            await invoke("set_last_project", { projectPath: path });
+          } catch {}
         }
       } catch (err) {
         console.error("打开目录失败:", err);
@@ -179,7 +203,7 @@ function App() {
               <button
                 className="btn-icon"
                 title="切换项目"
-                onClick={() => { saveTreeState(); setProjectRoot(null); }}
+                onClick={handleCloseProject}
               >
                 ✕
               </button>
@@ -193,7 +217,7 @@ function App() {
             />
           </aside>
           <main className="editor-area">
-            <Editor filePath={currentFile} content={fileContent} onChange={handleContentChange} />
+            <Editor filePath={currentFile} content={fileContent} onChange={handleContentChange} theme={theme} />
           </main>
           <aside className="agent-panel">
             <AgentPanel currentFile={currentFile} />
