@@ -7,18 +7,30 @@ interface TabInfo {
   md_mode?: string;
 }
 
+interface PanelWidths {
+  sidebar_width?: number | null;
+  agent_width?: number | null;
+}
+
 interface ProjectState {
   expanded_paths: string[];
   current_file: string | null;
   open_tabs: TabInfo[];
+  panel_widths?: PanelWidths;
 }
 
 interface FileTreeProps {
   projectRoot: string;
   onFileSelect: (path: string) => void;
   onExpandedChange?: (paths: Set<string>) => void;
-  onReady?: (savedFile: string | null, openTabs: TabInfo[]) => void;
+  onReady?: (
+    savedFile: string | null,
+    openTabs: TabInfo[],
+    panelWidths?: PanelWidths
+  ) => void;
   getCurrentFile?: () => string | null;
+  /** 获取当前面板宽度（用于保存到项目状态） */
+  getPanelWidths?: () => PanelWidths | undefined;
 }
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -71,7 +83,7 @@ function FileTreeNode({
   );
 }
 
-export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, onReady, getCurrentFile }: FileTreeProps) {
+export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, onReady, getCurrentFile, getPanelWidths }: FileTreeProps) {
   const [tree, setTree] = useState<FileNode | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const expandedRef = useRef(expandedPaths);
@@ -86,16 +98,18 @@ export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, 
     saveTimerRef.current = setTimeout(() => {
       const paths = Array.from(expandedRef.current);
       const currentFile = getCurrentFile?.() ?? null;
+      const panelWidths = getPanelWidths?.();
       invoke("save_tree_state", {
         projectPath: projectRoot,
         expandedPaths: paths,
         currentFile,
+        panelWidths,
       }).catch(() => {});
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [expandedPaths, projectRoot, tree, getCurrentFile]);
+  }, [expandedPaths, projectRoot, tree, getCurrentFile, getPanelWidths]);
 
   // 加载目录树 + 恢复展开状态 + 恢复当前文件
   useEffect(() => {
@@ -119,7 +133,7 @@ export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, 
           onExpandedChange?.(initial);
         }
         // 通知 App 恢复文件
-        onReady?.(state.current_file, state.open_tabs || []);
+        onReady?.(state.current_file, state.open_tabs || [], state.panel_widths);
       })
       .catch(console.error);
   }, [projectRoot]);

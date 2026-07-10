@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface LLMProviderEntry {
@@ -17,8 +17,20 @@ interface LLMConfig {
   providers: LLMProviderEntry[];
 }
 
+interface EditorSettings {
+  fontFamily: string;
+  fontSize: number;
+}
+
 interface SettingsProps {
-  onClose: () => void;
+  /** 当前已应用的设置（应用后会被更新） */
+  appliedSettings: EditorSettings;
+  /** 应用后调用，返回是否成功 */
+  onApplyEditor: (settings: EditorSettings) => Promise<boolean>;
+  /** 报告是否有未保存的变更（用于关闭前检查） */
+  onDirtyChange: (dirty: boolean) => void;
+  /** 注册应用函数（供外部触发，如关闭确认对话框的"保存"按钮） */
+  registerApply?: (fn: () => Promise<boolean>) => void;
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -42,11 +54,26 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   gemini: "",
 };
 
+const FONT_OPTIONS = [
+  { label: "默认（系统等宽）", value: "" },
+  { label: "JetBrains Mono", value: "'JetBrains Mono', monospace" },
+  { label: "Fira Code", value: "'Fira Code', monospace" },
+  { label: "Consolas", value: "Consolas, monospace" },
+  { label: "Source Code Pro", value: "'Source Code Pro', monospace" },
+];
+
 function genId() {
   return `provider_${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export default function Settings({ onClose }: SettingsProps) {
+export default function Settings({ appliedSettings, onApplyEditor, onDirtyChange, registerApply }: SettingsProps) {
+  const [activeTab, setActiveTab] = useState<"editor" | "llm">("editor");
+
+  // 编辑器设置（未保存的工作副本）
+  const [editorSettings, setEditorSettings] = useState<EditorSettings>(appliedSettings);
+  const [editorMessage, setEditorMessage] = useState("");
+
+  // LLM 设置
   const [providers, setProviders] = useState<LLMProviderEntry[]>([]);
   const [activeProviderId, setActiveProviderId] = useState("");
   const [editingId, setEditingId] = useState("");
@@ -57,17 +84,30 @@ export default function Settings({ onClose }: SettingsProps) {
   const [fetchingModels, setFetchingModels] = useState(false);
   const [testing, setTesting] = useState(false);
 
+  // 已保存的 LLM 配置快照（用于检测变更）
+  const llmSnapshotRef = useRef<string>("");
+
   // 当前正在编辑的供应商
   const editing = providers.find((p) => p.id === editingId) || null;
 
   // 加载配置
   const loadConfig = useCallback(async () => {
     try {
+      // 加载 LLM 配置
       const data = await invoke<LLMConfig>("get_config");
       setProviders(data.providers);
       setActiveProviderId(data.active_provider_id);
-      // 默认编辑激活的供应商
       setEditingId(data.active_provider_id);
+
+      // 加载编辑器设置
+      const settings = await invoke<Record<string, unknown>>("get_settings");
+      const editor = settings?.editor as Record<string, unknown> | undefined;
+      if (editor) {
+        setEditorSettings({
+          fontFamily: (editor.fontFamily as string) || "",
+          fontSize: (editor.fontSize as number) || 14,
+        });
+      }
     } catch (err) {
       setMessage(`加载配置失败: ${err}`);
     } finally {
@@ -78,6 +118,28 @@ export default function Settings({ onClose }: SettingsProps) {
   useEffect(() => {
     loadConfig();
   }, [loadConfig]);
+
+  // 保存编辑器设置（点击应用按钮时调用）
+  const applyEditorSettings = useCallback(async () => {
+    const fontSize = Math.min(24, Math.max(10, editorSettings.fontSize || 14));
+    const finalSettings = { ...editorSettings, fontSize };
+    setEditorSettings(finalSettings);
+    const ok = await onApplyEditor(finalSettings);
+    if (ok) {
+      setEditorMessage("✓ 已应用");
+      setTimeout(() => setEditorMessage(""), 2000);
+    } else {
+      setEditorMessage("✗ 保存失败");
+    }
+    return ok;
+  }, [editorSettings, onApplyEditor]);
+
+  // 注册应用函数供外部触发（关闭确认对话框的"保存"按钮）
+  useEffect(() => {
+    if (registerApply) {
+      registerApply(() => applyEditorSettings());
+    }
+  }, [registerApply, applyEditorSettings]);
 
   // 更新当前编辑的供应商
   const updateEditing = (patch: Partial<LLMProviderEntry>) => {
@@ -110,7 +172,7 @@ export default function Settings({ onClose }: SettingsProps) {
     if (providers.length <= 1) return;
     const provider = providers.find((p) => p.id === id);
     if (!provider) return;
-    if (!confirm(`确定要删除「${provider.name}」吗？`)) return;
+    if (!window.confirm(`确定要删除「${provider.name}」吗？`)) return;
 
     setProviders((prev) => prev.filter((p) => p.id !== id));
     if (editingId === id) {
@@ -140,8 +202,8 @@ export default function Settings({ onClose }: SettingsProps) {
     setMessage("");
   };
 
-  // 保存配置
-  const handleSave = async () => {
+  // 保存 LLM 配置
+  const handleSaveLLM = async () => {
     setSaving(true);
     setMessage("");
     try {
@@ -156,12 +218,37 @@ export default function Settings({ onClose }: SettingsProps) {
       } else {
         setMessage("✓ 配置已保存");
       }
+      // 保存后更新快照
+      llmSnapshotRef.current = JSON.stringify(config);
     } catch (err) {
       setMessage(`保存失败: ${err}`);
     } finally {
       setSaving(false);
     }
   };
+
+  // 加载 LLM 配置后初始化快照
+  useEffect(() => {
+    if (!loading && providers.length >= 0 && !llmSnapshotRef.current) {
+      llmSnapshotRef.current = JSON.stringify({
+        active_provider_id: activeProviderId,
+        providers,
+      } as LLMConfig);
+    }
+  }, [loading, providers, activeProviderId]);
+
+  // 检测编辑器/ LLM 变更
+  useEffect(() => {
+    const editorDirty =
+      editorSettings.fontFamily !== appliedSettings.fontFamily ||
+      editorSettings.fontSize !== appliedSettings.fontSize;
+    const llmDirty = !!llmSnapshotRef.current &&
+      llmSnapshotRef.current !== JSON.stringify({
+        active_provider_id: activeProviderId,
+        providers,
+      } as LLMConfig);
+    onDirtyChange(editorDirty || llmDirty);
+  }, [editorSettings, appliedSettings, providers, activeProviderId, onDirtyChange]);
 
   // 测试连接（成功后自动拉取模型列表）
   const handleTest = async () => {
@@ -173,7 +260,7 @@ export default function Settings({ onClose }: SettingsProps) {
       setMessage(`✓ ${result}`);
       await fetchModels(editing);
     } catch (err) {
-      setMessage(` ${err}`);
+      setMessage(`✗ ${err}`);
     } finally {
       setTesting(false);
     }
@@ -198,202 +285,251 @@ export default function Settings({ onClose }: SettingsProps) {
   };
 
   if (loading) {
-    return (
-      <div className="settings-overlay">
-        <div className="settings-panel">
-          <div className="settings-header">
-            <h2>设置</h2>
-            <button className="settings-close" onClick={onClose}>✕</button>
-          </div>
-          <div className="settings-body">加载中...</div>
-        </div>
-      </div>
-    );
+    return <div className="settings-body">加载中...</div>;
   }
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel settings-panel-wide" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
-          <h2>设置</h2>
-          <button className="settings-close" onClick={onClose}>✕</button>
+    <div className={activeTab === "llm" ? "settings-panel settings-panel-wide" : "settings-panel"}>
+
+        {/* Tab 导航 */}
+        <div className="settings-tabs">
+          <button
+            className={`settings-tab${activeTab === "editor" ? " active" : ""}`}
+            onClick={() => setActiveTab("editor")}
+          >
+            编辑器
+          </button>
+          <button
+            className={`settings-tab${activeTab === "llm" ? " active" : ""}`}
+            onClick={() => setActiveTab("llm")}
+          >
+            LLM 供应商
+          </button>
         </div>
-        <div className="settings-body settings-body-split">
-          {/* 左侧：供应商列表 */}
-          <div className="provider-list-panel">
-            <div className="provider-list-header">
-              <span>LLM 供应商</span>
-            </div>
-            <div className="provider-list">
-              {providers.map((p) => (
-                <div
-                  key={p.id}
-                  className={`provider-list-item ${p.id === editingId ? "selected" : ""} ${p.id === activeProviderId ? "active" : ""}`}
-                  onClick={() => handleSelect(p.id)}
+
+        {/* 编辑器设置 */}
+        {activeTab === "editor" && (
+          <div className="settings-body">
+            <div className="settings-section">
+              <h3>字体</h3>
+              <div className="settings-field">
+                <label>字体族</label>
+                <select
+                  value={editorSettings.fontFamily}
+                  onChange={(e) => setEditorSettings({ ...editorSettings, fontFamily: e.target.value })}
                 >
-                  <div className="provider-item-info">
-                    <span className="provider-item-name">{p.name}</span>
-                    <span className="provider-item-type">{PROVIDER_LABELS[p.provider] || p.provider}</span>
-                  </div>
-                  <div className="provider-item-actions">
-                    {p.id === activeProviderId && <span className="provider-active-badge">默认</span>}
-                    {providers.length > 1 && (
-                      <button
-                        className="provider-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                        title="删除"
-                      >✕</button>
-                    )}
-                  </div>
+                  {FONT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="settings-field">
+                <label>字号</label>
+                <div className="number-input-row">
+                  <input
+                    type="number"
+                    min={10}
+                    max={24}
+                    value={editorSettings.fontSize}
+                    onChange={(e) => setEditorSettings({ ...editorSettings, fontSize: Number(e.target.value) || 0 })}
+                  />
+                  <span className="number-input-unit">px（10 - 24）</span>
                 </div>
-              ))}
+              </div>
             </div>
-            <button className="provider-add-btn" onClick={handleAdd}>+ 添加供应商</button>
-          </div>
-
-          {/* 右侧：编辑面板 */}
-          <div className="provider-edit-panel">
-            {editing ? (
-              <>
-                <div className="settings-section">
-                  <div className="settings-field">
-                    <label>名称</label>
-                    <input
-                      type="text"
-                      value={editing.name}
-                      onChange={(e) => updateEditing({ name: e.target.value })}
-                      placeholder="供应商名称"
-                    />
-                  </div>
-
-                  <div className="settings-field">
-                    <label>类型</label>
-                    <select
-                      value={editing.provider}
-                      onChange={(e) => {
-                        const newProvider = e.target.value;
-                        updateEditing({
-                          provider: newProvider,
-                          base_url: DEFAULT_BASE_URLS[newProvider] || "",
-                          model: DEFAULT_MODELS[newProvider] || "",
-                        });
-                        setAvailableModels([]);
-                      }}
-                    >
-                      <option value="openai">OpenAI / 兼容 API</option>
-                      <option value="claude">Claude (Anthropic)</option>
-                      <option value="ollama">Ollama (本地)</option>
-                      <option value="gemini">Gemini (Google)</option>
-                    </select>
-                  </div>
-
-                  {editing.provider !== "ollama" && (
-                    <div className="settings-field">
-                      <label>API Key</label>
-                      <input
-                        type="password"
-                        value={editing.api_key === "***" ? "" : editing.api_key}
-                        onChange={(e) => updateEditing({ api_key: e.target.value })}
-                        placeholder={editing.api_key === "***" ? "已保存 (留空保持不变)" : "sk-..."}
-                      />
-                    </div>
-                  )}
-
-                  <div className="settings-field">
-                    <label>Base URL</label>
-                    <input
-                      type="text"
-                      value={editing.base_url}
-                      onChange={(e) => updateEditing({ base_url: e.target.value })}
-                      placeholder={
-                        editing.provider === "openai" ? "https://api.openai.com/v1" :
-                        editing.provider === "ollama" ? "http://localhost:11434" :
-                        "自定义 API 地址"
-                      }
-                    />
-                  </div>
-
-                  <div className="settings-field">
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={editing.use_proxy || false}
-                        onChange={(e) => updateEditing({ use_proxy: e.target.checked })}
-                      />
-                      使用 HTTP 代理
-                    </label>
-                    {editing.use_proxy && (
-                      <input
-                        type="text"
-                        value={editing.proxy || ""}
-                        onChange={(e) => updateEditing({ proxy: e.target.value })}
-                        placeholder="http://127.0.0.1:7890"
-                      />
-                    )}
-                  </div>
-
-                  <div className="settings-field">
-                    <label>模型</label>
-                    <div className="model-input-row">
-                      {availableModels.length > 0 ? (
-                        <select
-                          value={editing.model}
-                          onChange={(e) => updateEditing({ model: e.target.value })}
-                        >
-                          {availableModels.map((m) => (
-                            <option key={m} value={m}>{m}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={editing.model}
-                          onChange={(e) => updateEditing({ model: e.target.value })}
-                          placeholder={DEFAULT_MODELS[editing.provider] || "模型名称"}
-                        />
-                      )}
-                      <button
-                        className="btn-icon"
-                        onClick={() => fetchModels()}
-                        disabled={fetchingModels}
-                        title="获取模型列表"
-                      >
-                        {fetchingModels ? "⟳" : "↻"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {editing.id !== activeProviderId && (
-                  <button
-                    className="btn-activate"
-                    onClick={() => handleActivate(editing.id)}
-                  >
-                    设为默认供应商
-                  </button>
-                )}
-              </>
-            ) : (
-              <div className="provider-edit-empty">选择一个供应商进行编辑</div>
-            )}
-
-            {message && (
-              <div className={`settings-message ${message.startsWith("✗") || message.includes("失败") ? "error" : "success"}`}>
-                {message}
+            {editorMessage && (
+              <div className={`settings-message ${editorMessage.startsWith("✗") ? "error" : "success"}`}>
+                {editorMessage}
               </div>
             )}
-
             <div className="settings-actions">
-              <button className="btn-secondary" onClick={handleTest} disabled={testing || !editing}>
-                {testing ? "测试中..." : "测试连接"}
-              </button>
-              <button className="btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? "保存中..." : "保存"}
+              <button className="btn-primary" onClick={applyEditorSettings}>
+                应用
               </button>
             </div>
           </div>
-        </div>
-      </div>
+        )}
+
+        {/* LLM 供应商设置 */}
+        {activeTab === "llm" && (
+          <div className="settings-body settings-body-split">
+            {/* 左侧：供应商列表 */}
+            <div className="provider-list-panel">
+              <div className="provider-list-header">
+                <span>LLM 供应商</span>
+              </div>
+              <div className="provider-list">
+                {providers.map((p) => (
+                  <div
+                    key={p.id}
+                    className={`provider-list-item ${p.id === editingId ? "selected" : ""} ${p.id === activeProviderId ? "active" : ""}`}
+                    onClick={() => handleSelect(p.id)}
+                  >
+                    <div className="provider-item-info">
+                      <span className="provider-item-name">{p.name}</span>
+                      <span className="provider-item-type">{PROVIDER_LABELS[p.provider] || p.provider}</span>
+                    </div>
+                    <div className="provider-item-actions">
+                      {p.id === activeProviderId && <span className="provider-active-badge">默认</span>}
+                      {providers.length > 1 && (
+                        <button
+                          className="provider-delete-btn"
+                          onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                          title="删除"
+                        >✕</button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button className="provider-add-btn" onClick={handleAdd}>+ 添加供应商</button>
+            </div>
+
+            {/* 右侧：编辑面板 */}
+            <div className="provider-edit-panel">
+              {editing ? (
+                <>
+                  <div className="provider-edit-header">
+                    <span className="provider-edit-title">{editing.name || "未命名供应商"}</span>
+                    {editing.id !== activeProviderId && (
+                      <button
+                        className="btn-activate"
+                        onClick={() => handleActivate(editing.id)}
+                      >
+                        设为默认供应商
+                      </button>
+                    )}
+                  </div>
+                  <div className="settings-section">
+                    <div className="settings-field">
+                      <label>名称</label>
+                      <input
+                        type="text"
+                        value={editing.name}
+                        onChange={(e) => updateEditing({ name: e.target.value })}
+                        placeholder="供应商名称"
+                      />
+                    </div>
+
+                    <div className="settings-field">
+                      <label>类型</label>
+                      <select
+                        value={editing.provider}
+                        onChange={(e) => {
+                          const newProvider = e.target.value;
+                          updateEditing({
+                            provider: newProvider,
+                            base_url: DEFAULT_BASE_URLS[newProvider] || "",
+                            model: DEFAULT_MODELS[newProvider] || "",
+                          });
+                          setAvailableModels([]);
+                        }}
+                      >
+                        <option value="openai">OpenAI / 兼容 API</option>
+                        <option value="claude">Claude (Anthropic)</option>
+                        <option value="ollama">Ollama (本地)</option>
+                        <option value="gemini">Gemini (Google)</option>
+                      </select>
+                    </div>
+
+                    {editing.provider !== "ollama" && (
+                      <div className="settings-field">
+                        <label>API Key</label>
+                        <input
+                          type="password"
+                          value={editing.api_key === "***" ? "" : editing.api_key}
+                          onChange={(e) => updateEditing({ api_key: e.target.value })}
+                          placeholder={editing.api_key === "***" ? "已保存 (留空保持不变)" : "sk-..."}
+                        />
+                      </div>
+                    )}
+
+                    <div className="settings-field">
+                      <label>Base URL</label>
+                      <input
+                        type="text"
+                        value={editing.base_url}
+                        onChange={(e) => updateEditing({ base_url: e.target.value })}
+                        placeholder={
+                          editing.provider === "openai" ? "https://api.openai.com/v1" :
+                          editing.provider === "ollama" ? "http://localhost:11434" :
+                          "自定义 API 地址"
+                        }
+                      />
+                    </div>
+
+                    <div className="settings-field">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={editing.use_proxy || false}
+                          onChange={(e) => updateEditing({ use_proxy: e.target.checked })}
+                        />
+                        使用 HTTP 代理
+                      </label>
+                      {editing.use_proxy && (
+                        <input
+                          type="text"
+                          value={editing.proxy || ""}
+                          onChange={(e) => updateEditing({ proxy: e.target.value })}
+                          placeholder="http://127.0.0.1:7890"
+                        />
+                      )}
+                    </div>
+
+                    <div className="settings-field">
+                      <label>模型</label>
+                      <div className="model-input-row">
+                        {availableModels.length > 0 ? (
+                          <select
+                            value={editing.model}
+                            onChange={(e) => updateEditing({ model: e.target.value })}
+                          >
+                            {availableModels.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={editing.model}
+                            onChange={(e) => updateEditing({ model: e.target.value })}
+                            placeholder={DEFAULT_MODELS[editing.provider] || "模型名称"}
+                          />
+                        )}
+                        <button
+                          className="btn-icon"
+                          onClick={() => fetchModels()}
+                          disabled={fetchingModels}
+                          title="获取模型列表"
+                        >
+                          {fetchingModels ? "⟳" : "↻"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="provider-edit-empty">选择一个供应商进行编辑</div>
+              )}
+
+              {message && (
+                <div className={`settings-message ${message.startsWith("✗") || message.includes("失败") ? "error" : "success"}`}>
+                  {message}
+                </div>
+              )}
+
+              <div className="settings-actions">
+                <button className="btn-secondary" onClick={handleTest} disabled={testing || !editing}>
+                  {testing ? "测试中..." : "测试连接"}
+                </button>
+                <button className="btn-primary" onClick={handleSaveLLM} disabled={saving}>
+                  {saving ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

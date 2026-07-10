@@ -377,12 +377,23 @@ pub struct TabInfo {
     pub md_mode: Option<String>,
 }
 
-/// 项目状态（展开路径 + 当前文件 + 打开的标签页）
+/// 面板宽度（侧栏 / AI 面板）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PanelWidths {
+    #[serde(default)]
+    pub sidebar_width: Option<u32>,
+    #[serde(default)]
+    pub agent_width: Option<u32>,
+}
+
+/// 项目状态（展开路径 + 当前文件 + 打开的标签页 + 面板宽度）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectState {
     pub expanded_paths: Vec<String>,
     pub current_file: Option<String>,
     pub open_tabs: Vec<TabInfo>,
+    #[serde(default)]
+    pub panel_widths: PanelWidths,
 }
 
 /// 保存项目状态到 projects/project-{uid}.json
@@ -392,6 +403,7 @@ pub fn save_tree_state(
     expanded_paths: Vec<String>,
     current_file: Option<String>,
     open_tabs: Option<Vec<TabInfo>>,
+    panel_widths: Option<PanelWidths>,
 ) -> Result<(), String> {
     let state_path = get_project_state_path(&project_path)?;
     let projects_dir = get_projects_dir()?;
@@ -403,6 +415,7 @@ pub fn save_tree_state(
         "expanded_paths": expanded_paths,
         "current_file": current_file,
         "open_tabs": open_tabs.unwrap_or_default(),
+        "panel_widths": panel_widths.unwrap_or_default(),
     });
     let content = serde_json::to_string_pretty(&state).map_err(|e| e.to_string())?;
     std::fs::write(&state_path, content).map_err(|e| e.to_string())
@@ -418,6 +431,7 @@ pub fn load_tree_state(project_path: String) -> Result<ProjectState, String> {
             expanded_paths: vec![],
             current_file: None,
             open_tabs: vec![],
+            panel_widths: PanelWidths::default(),
         });
     }
 
@@ -447,10 +461,16 @@ pub fn load_tree_state(project_path: String) -> Result<ProjectState, String> {
         })
         .unwrap_or_default();
 
+    let panel_widths: PanelWidths = state
+        .get("panel_widths")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
     Ok(ProjectState {
         expanded_paths,
         current_file,
         open_tabs,
+        panel_widths,
     })
 }
 

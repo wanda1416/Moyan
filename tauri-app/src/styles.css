@@ -149,6 +149,21 @@ html, body, #root {
   font-size: 12px;
   color: var(--text-secondary);
   cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-app-region: drag;
+}
+.titlebar-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.titlebar-app-name {
+  font-weight: 500;
+  color: var(--text-primary);
 }
 .titlebar-controls {
   display: flex;
@@ -351,6 +366,14 @@ html, body, #root {
 .tab-item-close:hover {
   background: var(--danger, #e53935);
   color: #fff;
+}
+.tab-item-settings {
+  font-style: italic;
+}
+.tab-item-icon {
+  font-size: 12px;
+  margin-right: 2px;
+  color: var(--accent);
 }
 
 /* === 状态栏 === */
@@ -1043,6 +1066,13 @@ html, body, #root {
 .welcome-logo {
   margin-bottom: 16px;
 }
+.welcome-logo-img {
+  width: 96px;
+  height: 96px;
+  border-radius: 20px;
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
 .welcome-icon {
   display: inline-flex;
   align-items: center;
@@ -1144,27 +1174,17 @@ html, body, #root {
   background: var(--bg-hover);
 }
 
-/* === 设置界面 === */
-.settings-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
+/* === 设置界面（嵌入编辑器区域） === */
 .settings-panel {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  width: 480px;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: none;
 }
 .settings-header {
   display: flex;
@@ -1192,8 +1212,67 @@ html, body, #root {
   background: var(--bg-surface);
   color: var(--text-primary);
 }
+
+/* 设置页 Tab 导航 */
+.settings-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+}
+.settings-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.settings-tab:hover {
+  color: var(--text-primary);
+}
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+/* 范围输入框 */
+.range-input {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 数字输入行 */
+.number-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.number-input-row input[type="number"] {
+  width: 80px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+.number-input-row input[type="number"]:focus {
+  border-color: var(--accent);
+}
+.number-input-unit {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .settings-body {
   padding: 20px;
+  flex: 1;
+  overflow-y: auto;
 }
 .settings-section h3 {
   font-size: 14px;
@@ -1336,8 +1415,8 @@ html, body, #root {
 
 /* === 多供应商分栏布局 === */
 .settings-panel-wide {
-  width: 720px;
-  max-width: 90vw;
+  width: 100%;
+  height: 100%;
 }
 .settings-body-split {
   display: flex;
@@ -1486,19 +1565,106 @@ html, body, #root {
   text-align: center;
   padding: 40px 20px;
 }
+.provider-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.provider-edit-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .btn-activate {
-  padding: 8px 16px;
+  padding: 6px 12px;
   border: 1px solid var(--accent);
   border-radius: 6px;
   background: transparent;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  margin-bottom: 12px;
+  white-space: nowrap;
   transition: all 0.15s;
 }
 .btn-activate:hover {
   background: var(--accent);
   color: var(--bg-primary);
+}
+
+/* === 确认对话框 === */
+.confirm-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.confirm-dialog-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.confirm-dialog-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.confirm-dialog-body {
+  padding: 20px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.confirm-dialog-body p {
+  margin: 0;
+}
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.btn-destructive {
+  padding: 8px 16px;
+  border: 1px solid var(--danger, #e53935);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger, #e53935);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: auto;
+}
+.btn-destructive:hover {
+  background: var(--danger, #e53935);
+  color: #fff;
 }

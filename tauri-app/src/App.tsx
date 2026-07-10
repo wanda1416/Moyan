@@ -8,6 +8,7 @@ import Welcome from "./components/Welcome";
 import Settings from "./components/Settings";
 import TabBar from "./components/TabBar";
 import StatusBar from "./components/StatusBar";
+import ConfirmDialog from "./components/ConfirmDialog";
 import "./styles.css";
 
 function isImageFile(path: string): boolean {
@@ -24,6 +25,9 @@ interface TabData {
   mdMode: "preview" | "source";
 }
 
+/** 特殊标签：设置页 */
+const SETTINGS_TAB_PATH = "__settings__";
+
 // 面板宽度默认值
 const DEFAULT_SIDEBAR_WIDTH = 260;
 const DEFAULT_AGENT_WIDTH = 340;
@@ -33,13 +37,34 @@ const MIN_AGENT_WIDTH = 200;
 function App() {
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>("light");
-  const [showSettings, setShowSettings] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [agentWidth, setAgentWidth] = useState(DEFAULT_AGENT_WIDTH);
 
   // 多标签状态
   const [openTabs, setOpenTabs] = useState<TabData[]>([]);
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
+
+  // 编辑器设置
+  const [editorFontFamily, setEditorFontFamily] = useState("");
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  // 设置页脏状态（用 ref 同步追踪，避免关闭时拿到旧值）
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const settingsDirtyRef = useRef(false);
+
+  // 自定义确认对话框状态
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onDestructive?: () => void;
+    onSave?: () => void;
+  }>({ open: false, title: "", message: "" });
+
+  // 关闭时正在处理的路径（用于回调）
+  const pendingCloseRef = useRef<{ path: string; onAfter: () => void } | null>(null);
+
+  // Settings 组件注册的应用函数（由 Settings 在挂载时设置）
+  const settingsApplyRef = useRef<(() => Promise<boolean>) | null>(null);
 
   const expandedPathsRef = useRef<Set<string>>(new Set());
   const resizingRef = useRef<"sidebar" | "agent" | null>(null);
@@ -102,20 +127,26 @@ function App() {
     };
   }, []);
 
-  // 保存项目状态（目录树展开 + 当前文件 + 打开的标签页）
+  // 保存项目状态（目录树展开 + 当前文件 + 打开的标签页 + 面板宽度）
   const saveTreeState = useCallback(async () => {
     if (!projectRoot) return;
     try {
       const paths = Array.from(expandedPathsRef.current);
-      const tabsInfo = openTabs.map((t) => ({ path: t.path, md_mode: t.mdMode }));
+      const tabsInfo = openTabs
+        .filter((t) => t.path !== SETTINGS_TAB_PATH)
+        .map((t) => ({ path: t.path, md_mode: t.mdMode }));
       await invoke("save_tree_state", {
         projectPath: projectRoot,
         expandedPaths: paths,
         currentFile: currentFileRef.current,
         openTabs: tabsInfo,
+        panelWidths: {
+          sidebar_width: sidebarWidth,
+          agent_width: agentWidth,
+        },
       });
     } catch {}
-  }, [projectRoot, openTabs]);
+  }, [projectRoot, openTabs, sidebarWidth, agentWidth]);
 
   // 加载主题配置和上次打开的项目
   useEffect(() => {
@@ -126,6 +157,12 @@ function App() {
       const saved = settings?.theme as Theme | undefined;
       if (saved === "light" || saved === "dark") {
         setTheme(saved);
+      }
+      // 加载编辑器设置
+      const editor = settings?.editor as Record<string, unknown> | undefined;
+      if (editor) {
+        if (typeof editor.fontFamily === "string") setEditorFontFamily(editor.fontFamily);
+        if (typeof editor.fontSize === "number") setEditorFontSize(editor.fontSize);
       }
     }).catch(() => {});
     
@@ -195,11 +232,109 @@ function App() {
 
   // 关闭标签
   const handleCloseTab = useCallback((path: string) => {
+    // 设置标签特殊处理
+    if (path === SETTINGS_TAB_PATH) {
+      if (settingsDirtyRef.current) {
+        // 使用自定义对话框（window.confirm 在 Tauri 中不可靠）
+        pendingCloseRef.current = {
+          path,
+          onAfter: () => {
+            setOpenTabs((prev) => {
+              const newTabs = prev.filter((t) => t.path !== path);
+              if (path === activeTabPath) {
+                setActiveTabPath(newTabs.length > 0 ? newTabs[0].path : null);
+              }
+              return newTabs;
+            });
+            settingsDirtyRef.current = false;
+            setSettingsDirty(false);
+          },
+        };
+        setConfirmDialog({
+          open: true,
+          title: "设置未保存",
+          message: `当前设置有未保存的修改，请选择如何处理：\n\n• 保存：应用修改后关闭\n• 放弃修改：丢弃修改后关闭\n• 取消：返回设置页`,
+          onSave: async () => {
+            // 调用 Settings 组件注册的应用函数
+            if (settingsApplyRef.current) {
+              const ok = await settingsApplyRef.current();
+              if (ok) {
+                setConfirmDialog((d) => ({ ...d, open: false }));
+                pendingCloseRef.current?.onAfter();
+              }
+              // 应用失败时保持对话框打开，让用户选择其他操作
+            }
+          },
+          onDestructive: () => {
+            setConfirmDialog((d) => ({ ...d, open: false }));
+            pendingCloseRef.current?.onAfter();
+          },
+        });
+        return;
+      }
+      // 没有脏状态，直接关闭
+      setOpenTabs((prev) => {
+        const newTabs = prev.filter((t) => t.path !== path);
+        if (path === activeTabPath) {
+          setActiveTabPath(newTabs.length > 0 ? newTabs[0].path : null);
+        }
+        return newTabs;
+      });
+      settingsDirtyRef.current = false;
+      setSettingsDirty(false);
+      return;
+    }
+
+    // 普通文件标签
     setOpenTabs((prev) => {
       const tab = prev.find((t) => t.path === path);
       if (tab && tab.content !== tab.savedContent) {
-        const confirmed = window.confirm(`"${path.split(/[\\/]/).pop()}" 有未保存的更改，确定关闭吗？`);
-        if (!confirmed) return prev;
+        const name = path.split(/[\\/]/).pop();
+        pendingCloseRef.current = {
+          path,
+          onAfter: () => {
+            setOpenTabs((prev2) => {
+              const idx = prev2.findIndex((t) => t.path === path);
+              const newTabs = prev2.filter((t) => t.path !== path);
+              if (path === activeTabPath) {
+                if (newTabs.length === 0) {
+                  setActiveTabPath(null);
+                } else if (idx >= newTabs.length) {
+                  setActiveTabPath(newTabs[newTabs.length - 1].path);
+                } else {
+                  setActiveTabPath(newTabs[idx].path);
+                }
+              }
+              return newTabs;
+            });
+          },
+        };
+        setConfirmDialog({
+          open: true,
+          title: "文件未保存",
+          message: `"${name}" 有未保存的修改，请选择如何处理：\n\n• 保存：保存文件后关闭\n• 放弃修改：丢弃修改后关闭\n• 取消：返回编辑器`,
+          onSave: async () => {
+            // 调用 handleSave 的逻辑
+            if (path === activeTabPath) {
+              const tab = openTabs.find((t) => t.path === path);
+              if (tab && !isImageFile(path)) {
+                try {
+                  await invoke("write_file", { path, content: tab.content });
+                  setOpenTabs((prev2) =>
+                    prev2.map((t) => (t.path === path ? { ...t, savedContent: t.content } : t))
+                  );
+                } catch {}
+              }
+            }
+            setConfirmDialog((d) => ({ ...d, open: false }));
+            pendingCloseRef.current?.onAfter();
+          },
+          onDestructive: () => {
+            setConfirmDialog((d) => ({ ...d, open: false }));
+            pendingCloseRef.current?.onAfter();
+          },
+        });
+        return prev;
       }
 
       const idx = prev.findIndex((t) => t.path === path);
@@ -217,7 +352,7 @@ function App() {
       }
       return newTabs;
     });
-  }, [activeTabPath]);
+  }, [activeTabPath, openTabs]);
 
   // 保存当前文件
   const handleSave = useCallback(async () => {
@@ -250,8 +385,22 @@ function App() {
     expandedPathsRef.current = paths;
   }, []);
 
-  // FileTree 加载完成后，恢复上次打开的所有标签页
-  const handleFileTreeReady = useCallback(async (savedFile: string | null, openTabsInfo: { path: string; md_mode?: string }[]) => {
+  // FileTree 加载完成后，恢复上次打开的所有标签页 + 面板宽度
+  const handleFileTreeReady = useCallback(async (
+    savedFile: string | null,
+    openTabsInfo: { path: string; md_mode?: string }[],
+    panelWidths?: { sidebar_width?: number | null; agent_width?: number | null }
+  ) => {
+    // 恢复面板宽度
+    if (panelWidths) {
+      if (typeof panelWidths.sidebar_width === "number" && panelWidths.sidebar_width >= MIN_SIDEBAR_WIDTH) {
+        setSidebarWidth(panelWidths.sidebar_width);
+      }
+      if (typeof panelWidths.agent_width === "number" && panelWidths.agent_width >= MIN_AGENT_WIDTH) {
+        setAgentWidth(panelWidths.agent_width);
+      }
+    }
+
     if (openTabsInfo.length === 0) {
       // 没有保存的标签页，尝试恢复单个文件
       if (savedFile) {
@@ -287,8 +436,29 @@ function App() {
     setActiveTabPath(activePath);
   }, [handleFileSelect]);
 
+  // 应用编辑器设置（由设置页点击"应用"时调用）
+  const handleApplyEditorSettings = useCallback(async (newSettings: { fontFamily: string; fontSize: number }): Promise<boolean> => {
+    try {
+      const settings = await invoke<Record<string, unknown>>("get_settings");
+      settings.editor = newSettings;
+      await invoke("save_settings", { settings: JSON.stringify(settings) });
+      // 立即更新本地 state，让 Monaco 通过 updateOptions 生效
+      setEditorFontFamily(newSettings.fontFamily);
+      setEditorFontSize(newSettings.fontSize);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // 供 FileTree 防抖保存时获取当前文件
   const getCurrentFile = useCallback(() => currentFileRef.current, []);
+
+  // 供 FileTree 防抖保存时获取当前面板宽度
+  const getPanelWidths = useCallback(() => ({
+    sidebar_width: sidebarWidth,
+    agent_width: agentWidth,
+  }), [sidebarWidth, agentWidth]);
 
   const handleOpenProject = async (path: string) => {
     await saveTreeState();
@@ -320,6 +490,24 @@ function App() {
     } catch {}
   };
 
+  // 打开设置标签（如果已存在则切换；不存在则添加）
+  const openSettingsTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      const exists = prev.some((t) => t.path === SETTINGS_TAB_PATH);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          path: SETTINGS_TAB_PATH,
+          content: "",
+          savedContent: "",
+          mdMode: "preview",
+        },
+      ];
+    });
+    setActiveTabPath(SETTINGS_TAB_PATH);
+  }, []);
+
   // 菜单事件处理
   const handleMenuAction = useCallback(async (action: string) => {
     if (action === "open-project") {
@@ -345,13 +533,14 @@ function App() {
     } else if (action === "set-theme-dark") {
       handleThemeChange("dark");
     } else if (action === "open-settings") {
-      setShowSettings(true);
+      openSettingsTab();
     }
-  }, [saveTreeState, handleThemeChange, handleSave]);
+  }, [saveTreeState, handleThemeChange, handleSave, openSettingsTab]);
 
   // 计算当前文件的字数和类型（供 StatusBar 使用）
   const wordCount = activeTab ? countWords(activeTab.content) : 0;
   const fileType = getFileType(activeTabPath);
+  const isSettingsActive = activeTabPath === SETTINGS_TAB_PATH;
 
   return (
     <div className="app-root">
@@ -377,30 +566,51 @@ function App() {
               onExpandedChange={handleExpandedChange}
               onReady={handleFileTreeReady}
               getCurrentFile={getCurrentFile}
+              getPanelWidths={getPanelWidths}
             />
           </aside>
           <div className="resize-handle" onMouseDown={(e) => handleResizeStart("sidebar", e)} />
           <main className="editor-area">
             <TabBar
-              tabs={openTabs.map((t) => ({ path: t.path, dirty: t.content !== t.savedContent }))}
+              tabs={openTabs.map((t) => ({
+                path: t.path,
+                dirty: t.path === SETTINGS_TAB_PATH ? settingsDirty : t.content !== t.savedContent,
+                isSettings: t.path === SETTINGS_TAB_PATH,
+              }))}
               activeTabPath={activeTabPath}
               onTabClick={setActiveTabPath}
               onTabClose={handleCloseTab}
             />
-            <Editor
-              filePath={activeTabPath}
-              content={fileContent}
-              onChange={handleContentChange}
-              theme={theme}
-              mdMode={mdMode}
-            />
-            <StatusBar
-              filePath={activeTabPath}
-              wordCount={wordCount}
-              fileType={fileType}
-              mdMode={mdMode}
-              onMdModeChange={setMdMode}
-            />
+            {isSettingsActive ? (
+              <Settings
+                appliedSettings={{ fontFamily: editorFontFamily, fontSize: editorFontSize }}
+                onApplyEditor={handleApplyEditorSettings}
+                onDirtyChange={(dirty) => {
+                  settingsDirtyRef.current = dirty;
+                  setSettingsDirty(dirty);
+                }}
+                registerApply={(fn) => { settingsApplyRef.current = fn; }}
+              />
+            ) : (
+              <Editor
+                filePath={activeTabPath}
+                content={fileContent}
+                onChange={handleContentChange}
+                theme={theme}
+                mdMode={mdMode}
+                fontFamily={editorFontFamily}
+                fontSize={editorFontSize}
+              />
+            )}
+            {!isSettingsActive && (
+              <StatusBar
+                filePath={activeTabPath}
+                wordCount={wordCount}
+                fileType={fileType}
+                mdMode={mdMode}
+                onMdModeChange={setMdMode}
+              />
+            )}
           </main>
           <div className="resize-handle" onMouseDown={(e) => handleResizeStart("agent", e)} />
           <aside className="agent-panel" style={{ width: agentWidth, minWidth: agentWidth }}>
@@ -408,7 +618,17 @@ function App() {
           </aside>
         </div>
       )}
-      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onCancel={() => setConfirmDialog((d) => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onSave}
+        onDestructive={confirmDialog.onDestructive}
+        cancelText="取消"
+        confirmText="保存"
+        destructiveText="放弃修改"
+      />
     </div>
   );
 }

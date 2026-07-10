@@ -10,6 +10,8 @@ interface EditorProps {
   onChange: (value: string) => void;
   theme?: "light" | "dark";
   mdMode?: "preview" | "source";
+  fontFamily?: string;
+  fontSize?: number;
 }
 
 export type FileType = "text" | "markdown" | "image" | "unknown";
@@ -57,7 +59,7 @@ export function countWords(text: string): number {
   return chinese + english;
 }
 
-export default function Editor({ filePath, content, onChange, theme = "light", mdMode = "preview" }: EditorProps) {
+export default function Editor({ filePath, content, onChange, theme = "light", mdMode = "preview", fontFamily, fontSize }: EditorProps) {
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +89,8 @@ export default function Editor({ filePath, content, onChange, theme = "light", m
       theme: theme === "dark" ? "vs-dark" : "vs",
       automaticLayout: true,
       minimap: { enabled: false },
-      fontSize: 14,
+      fontFamily: fontFamily || "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+      fontSize: fontSize || 14,
       lineNumbers: "on",
       wordWrap: "on",
       scrollBeyondLastLine: false,
@@ -107,7 +110,17 @@ export default function Editor({ filePath, content, onChange, theme = "light", m
       editor.dispose();
       editorRef.current = null;
     };
-  }, [filePath, fileType, mdMode, theme]);
+  }, [filePath, fileType, mdMode, theme, fontFamily, fontSize]);
+
+  // 动态更新字体设置（无需重建编辑器）
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        fontFamily: fontFamily || "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+        fontSize: fontSize || 14,
+      });
+    }
+  }, [fontFamily, fontSize]);
 
   // 更新内容（外部变化时同步到 Monaco）
   useEffect(() => {
