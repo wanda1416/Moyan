@@ -1,0 +1,136 @@
+/* === 文件树 === */
+.file-tree-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.file-tree-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.file-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+  user-select: none;
+}
+.file-tree-node:hover {
+  background: var(--bg-surface);
+}
+.file-tree-node.selected {
+  background: var(--bg-active, rgba(0,0,0,0.08));
+}
+.file-tree-node .icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.file-tree-node .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tree-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* 内联输入框（重命名/新建） */
+.file-tree-node-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 1px 4px;
+  border: 1px solid var(--accent, #0078d4);
+  border-radius: 3px;
+  outline: none;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  font-family: inherit;
+}
+
+/* 右键上下文菜单 */
+.context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 160px;
+  background: var(--bg-panel, #fff);
+  border: 1px solid var(--border, #ddd);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  padding: 4px 0;
+  font-size: 13px;
+}
+.context-menu-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+  user-select: none;
+}
+.context-menu-item:hover {
+  background: var(--bg-hover, rgba(0,0,0,0.06));
+}
+.context-menu-item.danger {
+  color: var(--danger, #e53935);
+}
+.context-menu-item.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border, #ddd);
+}
+
+/* 删除确认对话框 */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.confirm-dialog {
+  background: var(--bg-panel, #fff);
+  border-radius: 8px;
+  padding: 20px;
+  min-width: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.confirm-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+.confirm-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.btn-danger {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--danger, #e53935);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-danger:hover {
+  opacity: 0.9;
+}

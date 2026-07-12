@@ -1,0 +1,214 @@
+/* === 标题栏 === */
+.titlebar {
+  display: flex;
+  align-items: center;
+  height: var(--titlebar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  flex-shrink: 0;
+  z-index: 100;
+}
+.titlebar-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+.titlebar-menus {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.menu-item {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.menu-label {
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: default;
+  line-height: var(--titlebar-height);
+}
+.menu-item:hover .menu-label,
+.menu-item.open .menu-label {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 4px 16px var(--shadow);
+  z-index: 200;
+}
+.menu-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: default;
+}
+.menu-action:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.menu-action.disabled {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+.menu-action.disabled:hover {
+  background: transparent;
+}
+.action-shortcut {
+  margin-left: 24px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+.menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 8px;
+}
+.titlebar-title {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  -webkit-app-region: drag;
+}
+.titlebar-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.titlebar-app-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.titlebar-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  flex-shrink: 0;
+}
+.win-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.win-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.win-btn.win-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* === 更新提示气泡（标题栏右侧） === */
+.titlebar-update-area {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+.update-bubble {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 26px;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-radius: 13px;
+  padding: 0 2px 0 4px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px var(--shadow);
+  animation: update-bubble-in 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-app-region: no-drag;
+}
+@keyframes update-bubble-in {
+  from { transform: translateY(-8px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.update-bubble-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0 8px 0 4px;
+  height: 100%;
+  border-radius: 13px 0 0 13px;
+  -webkit-app-region: no-drag;
+}
+.update-bubble-action:hover {
+  filter: brightness(1.08);
+}
+.update-bubble-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6);
+  animation: update-bubble-pulse 1.6s infinite;
+}
+@keyframes update-bubble-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
+}
+.update-bubble-text {
+  white-space: nowrap;
+  user-select: none;
+}
+.update-bubble-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  -webkit-app-region: no-drag;
+}
+.update-bubble-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.18);
+}

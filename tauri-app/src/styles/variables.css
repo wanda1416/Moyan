@@ -1,0 +1,61 @@
+:root {
+  /* 布局常量 */
+  --sidebar-width: 260px;
+  --agent-panel-width: 340px;
+  --titlebar-height: 32px;
+}
+
+/* === 浅色主题（默认） === */
+[data-theme="light"], :root:not([data-theme]) {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-surface: #e0e0e0;
+  --text-primary: #1e1e1e;
+  --text-secondary: #616161;
+  --accent: #0066cc;
+  --border: #d4d4d4;
+  --shadow: rgba(0, 0, 0, 0.12);
+  --error: #d32f2f;
+}
+
+/* === 深色主题 === */
+[data-theme="dark"] {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-surface: #313244;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --accent: #89b4fa;
+  --border: #45475a;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --error: #f38ba8;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+.app-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}

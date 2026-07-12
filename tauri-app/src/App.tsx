@@ -11,6 +11,7 @@ import ProjectSettings from "./components/ProjectSettings";
 import TabBar from "./components/TabBar";
 import StatusBar from "./components/StatusBar";
 import ConfirmDialog from "./components/ConfirmDialog";
+import { useAppTabs, SETTINGS_TAB_PATH, PROJECT_SETTINGS_TAB_PATH } from "./hooks/useAppTabs";
 import "./styles.css";
 
 /** 后端 updater.rs 返回的更新信息结构 */
@@ -23,11 +24,6 @@ interface UpdateInfo {
   published_at: string;
 }
 
-function isImageFile(path: string): boolean {
-  const ext = path.split(".").pop()?.toLowerCase() || "";
-  return ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico"].includes(ext);
-}
-
 type Theme = "light" | "dark";
 
 interface IndexStatus {
@@ -35,18 +31,6 @@ interface IndexStatus {
   chunks: number;
   built_at: string;
 }
-
-interface TabData {
-  path: string;
-  content: string;
-  savedContent: string;
-  mdMode: "preview" | "source";
-}
-
-/** 特殊标签：设置页 */
-const SETTINGS_TAB_PATH = "__settings__";
-/** 特殊标签：项目设置页 */
-const PROJECT_SETTINGS_TAB_PATH = "__project_settings__";
 
 // 面板宽度默认值
 const DEFAULT_SIDEBAR_WIDTH = 260;
@@ -60,9 +44,19 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [agentWidth, setAgentWidth] = useState(DEFAULT_AGENT_WIDTH);
 
-  // 多标签状态
-  const [openTabs, setOpenTabs] = useState<TabData[]>([]);
-  const [activeTabPath, setActiveTabPath] = useState<string | null>(null);
+  // 多标签状态（由 hook 管理）
+  const {
+    openTabs, setOpenTabs, activeTabPath, setActiveTabPath,
+    activeTab, fileContent, mdMode, setMdMode,
+    handleFileSelect, handleContentChange, handleSave, saveTab,
+    openSettingsTab: openSettingsTabBase, openProjectSettingsTab, restoreTabs,
+  } = useAppTabs();
+
+  // 包装 openSettingsTab：同时设置 settingsTabRequest
+  const openSettingsTab = useCallback((tab: "editor" | "llm" | "about" = "editor") => {
+    openSettingsTabBase();
+    setSettingsTabRequest(tab);
+  }, [openSettingsTabBase]);
 
   // 编辑器设置
   const [editorFontFamily, setEditorFontFamily] = useState("");
@@ -105,18 +99,7 @@ function App() {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
 
-  // 获取当前激活的标签数据
-  const activeTab = openTabs.find((t) => t.path === activeTabPath) || null;
   const currentFile = activeTabPath;
-  const fileContent = activeTab?.content || "";
-  const mdMode = activeTab?.mdMode || "preview";
-
-  // 更新当前标签的 mdMode
-  const setMdMode = useCallback((mode: "preview" | "source") => {
-    setOpenTabs((prev) =>
-      prev.map((t) => (t.path === activeTabPath ? { ...t, mdMode: mode } : t))
-    );
-  }, [activeTabPath]);
 
   // 同步 currentFile 到 ref（供 saveTreeState 使用）
   const currentFileRef = useRef<string | null>(null);
@@ -282,47 +265,6 @@ function App() {
     } catch {}
   }, []);
 
-  // 选择文件（打开或切换标签）
-  const handleFileSelect = useCallback(async (path: string) => {
-    setOpenTabs((prev) => {
-      const existing = prev.find((t) => t.path === path);
-      if (existing) {
-        // 已打开，直接切换
-        setActiveTabPath(path);
-        return prev;
-      }
-      // 新标签
-      return [...prev, { path, content: "", savedContent: "", mdMode: "preview" }];
-    });
-    setActiveTabPath(path);
-
-    // 读取文件内容
-    if (isImageFile(path)) return;
-    try {
-      const content = await invoke<string>("read_file", { path });
-      setOpenTabs((prev) =>
-        prev.map((t) =>
-          t.path === path ? { ...t, content, savedContent: content } : t
-        )
-      );
-    } catch (err) {
-      console.error("读取文件失败:", err);
-      const errorContent = `// 读取失败: ${err}`;
-      setOpenTabs((prev) =>
-        prev.map((t) =>
-          t.path === path ? { ...t, content: errorContent, savedContent: errorContent } : t
-        )
-      );
-    }
-  }, []);
-
-  // 内容变更
-  const handleContentChange = useCallback((value: string) => {
-    setOpenTabs((prev) =>
-      prev.map((t) => (t.path === activeTabPath ? { ...t, content: value } : t))
-    );
-  }, [activeTabPath]);
-
   // 关闭标签
   const handleCloseTab = useCallback((path: string) => {
     // 设置标签特殊处理
@@ -407,18 +349,7 @@ function App() {
           title: "文件未保存",
           message: `"${name}" 有未保存的修改，请选择如何处理：\n\n• 保存：保存文件后关闭\n• 放弃修改：丢弃修改后关闭\n• 取消：返回编辑器`,
           onSave: async () => {
-            // 调用 handleSave 的逻辑
-            if (path === activeTabPath) {
-              const tab = openTabs.find((t) => t.path === path);
-              if (tab && !isImageFile(path)) {
-                try {
-                  await invoke("write_file", { path, content: tab.content });
-                  setOpenTabs((prev2) =>
-                    prev2.map((t) => (t.path === path ? { ...t, savedContent: t.content } : t))
-                  );
-                } catch {}
-              }
-            }
+            await saveTab(path, openTabs.find((t) => t.path === path)?.content || "");
             setConfirmDialog((d) => ({ ...d, open: false }));
             pendingCloseRef.current?.onAfter();
           },
@@ -447,21 +378,6 @@ function App() {
     });
   }, [activeTabPath, openTabs]);
 
-  // 保存当前文件
-  const handleSave = useCallback(async () => {
-    if (!activeTabPath || isImageFile(activeTabPath)) return;
-    try {
-      await invoke("write_file", { path: activeTabPath, content: fileContent });
-      setOpenTabs((prev) =>
-        prev.map((t) =>
-          t.path === activeTabPath ? { ...t, savedContent: t.content } : t
-        )
-      );
-    } catch (err) {
-      console.error("保存文件失败:", err);
-    }
-  }, [activeTabPath, fileContent]);
-
   // Ctrl+S 快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -478,7 +394,7 @@ function App() {
     expandedPathsRef.current = paths;
   }, []);
 
-  // FileTree 加载完成后，恢复上次打开的所有标签页 + 面板宽度
+  // FileTree 加载完成后，恢复面板宽度 + 标签页
   const handleFileTreeReady = useCallback(async (
     savedFile: string | null,
     openTabsInfo: { path: string; md_mode?: string }[],
@@ -493,41 +409,9 @@ function App() {
         setAgentWidth(panelWidths.agent_width);
       }
     }
-
-    if (openTabsInfo.length === 0) {
-      // 没有保存的标签页，尝试恢复单个文件
-      if (savedFile) {
-        handleFileSelect(savedFile);
-      }
-      return;
-    }
-
-    // 批量打开所有标签页
-    const tabsData: TabData[] = [];
-    for (const tabInfo of openTabsInfo) {
-      const path = tabInfo.path;
-      let content = "";
-      if (!isImageFile(path)) {
-        try {
-          content = await invoke<string>("read_file", { path });
-        } catch {
-          content = `// 读取失败`;
-        }
-      }
-      tabsData.push({
-        path,
-        content,
-        savedContent: content,
-        mdMode: tabInfo.md_mode === "source" ? "source" : "preview",
-      });
-    }
-    setOpenTabs(tabsData);
-
-    // 恢复激活的标签页
-    const tabPaths = openTabsInfo.map((t) => t.path);
-    const activePath = savedFile && tabPaths.includes(savedFile) ? savedFile : tabPaths[tabPaths.length - 1];
-    setActiveTabPath(activePath);
-  }, [handleFileSelect]);
+    // 恢复标签页
+    await restoreTabs(savedFile, openTabsInfo);
+  }, [restoreTabs]);
 
   // 应用编辑器设置（由设置页点击"应用"时调用）
   const handleApplyEditorSettings = useCallback(async (newSettings: { fontFamily: string; fontSize: number }): Promise<boolean> => {
@@ -582,44 +466,6 @@ function App() {
       await invoke("clear_last_project");
     } catch {}
   };
-
-  // 打开设置标签（如果已存在则切换；不存在则添加）
-  const openSettingsTab = useCallback((tab: "editor" | "llm" | "about" = "editor") => {
-    setOpenTabs((prev) => {
-      const exists = prev.some((t) => t.path === SETTINGS_TAB_PATH);
-      if (exists) return prev;
-      return [
-        ...prev,
-        {
-          path: SETTINGS_TAB_PATH,
-          content: "",
-          savedContent: "",
-          mdMode: "preview",
-        },
-      ];
-    });
-    setActiveTabPath(SETTINGS_TAB_PATH);
-    // 通过 settingsTabRequest 传个递增 key 强制 Settings 重新挂载到目标 tab
-    setSettingsTabRequest(tab);
-  }, []);
-
-  // 打开项目设置标签（如果已存在则切换；不存在则添加）
-  const openProjectSettingsTab = useCallback(() => {
-    setOpenTabs((prev) => {
-      const exists = prev.some((t) => t.path === PROJECT_SETTINGS_TAB_PATH);
-      if (exists) return prev;
-      return [
-        ...prev,
-        {
-          path: PROJECT_SETTINGS_TAB_PATH,
-          content: "",
-          savedContent: "",
-          mdMode: "preview",
-        },
-      ];
-    });
-    setActiveTabPath(PROJECT_SETTINGS_TAB_PATH);
-  }, []);
 
   // 菜单事件处理
   const handleMenuAction = useCallback(async (action: string) => {

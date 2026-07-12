@@ -206,6 +206,33 @@
 - `Settings.tsx` 支持 `initialTab` prop，菜单/气泡可指定打开目标 Tab
 - 新增更新气泡、关于 Tab 相关 CSS 样式
 
+### 2026-07-11 RAG 索引增量刷新与项目设置页
+
+- `agent-core/rag/index.py` 重构：新增 `_compute_file_hash`（MD5）、`_load_manifest` / `_save_manifest` 辅助方法
+- `build_index()` 改造：按文件分组 chunk，持久化 `embeddings.npy`（全量向量矩阵）+ `manifest.json`（文件哈希 + chunk 映射）
+- 新增 `refresh_index()` 增量刷新方法：对比文件 MD5 分三类（unchanged / modified+new / deleted），仅对变动文件重新编码，无 manifest 时 fallback 到全量构建
+- Python `main.py` 新增 `POST /api/rag/refresh_index` 端点
+- Rust `app_dir.rs` 新增 `refresh_rag_index` / `delete_rag_index` 命令
+- 前端 `ProjectSettings.tsx` 新增三个索引管理按钮：刷新索引（增量）、重建索引（全量）、删除索引，按钮区与检索区增加间距
+
+### 2026-07-11 Sidecar 路径解析修复
+
+- 修复 `python_bridge.rs` 中 `resolve_sidecar_path()` 仅查找 `moyan-backend.exe` 的问题
+- Tauri `externalBin` 打包后文件名带 target triple 后缀（如 `moyan-backend-x86_64-pc-windows-msvc.exe`）
+- `resolve_sidecar_path()` 改为生成多个候选文件名（含 target triple 后缀），逐一查找，覆盖 Windows / macOS / Linux
+
+### 2026-07-11 文件树浏览器功能增强
+
+- Rust `filesystem.rs` 新增 5 个文件操作命令：`create_file` / `create_directory` / `delete_entry` / `rename_entry` / `copy_entry`（目录支持递归复制）
+- `FileTree.tsx` 全面重写，新增：
+  - 右键上下文菜单：新建文件、新建文件夹、重命名、删除、复制、剪切、粘贴、刷新
+  - 内联重命名：input 替换节点名称，Enter 确认 / Escape 取消
+  - 内联新建：在目录子节点区域渲染 input，支持新建文件/文件夹
+  - 剪贴板状态管理：copy / cut 模式 + paste 执行
+  - 键盘快捷键：F2（重命名）、Delete（删除）、Ctrl+C/X/V（复制/剪切/粘贴）
+  - 删除确认对话框：浮层组件，防止误删
+- CSS 新增：`.context-menu` 系列、`.file-tree-node-input`、`.confirm-overlay/dialog`、`.btn-danger` 样式
+
 ---
 
 ## 架构决策

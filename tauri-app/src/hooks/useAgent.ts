@@ -26,6 +26,8 @@ export function useAgent() {
   const messagesRef = useRef<AgentMessage[]>([]);
   const projectRootRef = useRef<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
+  const fileRequestIdsRef = useRef<Set<string>>(new Set());
+  const currentFileRef = useRef<string | null>(null);
 
   // 同步 ref 和 state
   useEffect(() => {
@@ -151,10 +153,11 @@ export function useAgent() {
     }
   }, []);
 
-  // 新建会话（清空当前对话）
+  // 新建会话（清空当前对话 + 重置当前文件上下文）
   const startNewSession = useCallback(() => {
     setMessages([]);
     setCurrentSessionId(null);
+    currentFileRef.current = null;
   }, []);
 
   // 切换会话
@@ -179,6 +182,12 @@ export function useAgent() {
         pendingRef.current.delete(requestId);
         clearTimeout(pending.timer);
         pending.resolve(response);
+      }
+
+      // set_current_file 的响应不添加到消息列表
+      if (requestId && fileRequestIdsRef.current.has(requestId)) {
+        fileRequestIdsRef.current.delete(requestId);
+        return;
       }
 
       // 添加到消息列表
@@ -282,8 +291,10 @@ export function useAgent() {
   // 发送设置当前文件请求
   const setCurrentFile = useCallback(
     (filePath: string | null) => {
+      currentFileRef.current = filePath;
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       const requestId = nextRequestId();
+      fileRequestIdsRef.current.add(requestId);
       const request = {
         request_id: requestId,
         agent_type: null as AgentType | null,
@@ -324,6 +335,9 @@ export function useAgent() {
         const body: Record<string, unknown> = { messages: chatMessages };
         if (projectRootRef.current) {
           body.project_root = projectRootRef.current;
+        }
+        if (currentFileRef.current) {
+          body.file_path = currentFileRef.current;
         }
 
         const response = await fetch(`${HTTP_URL}/api/chat`, {

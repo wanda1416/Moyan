@@ -1,0 +1,100 @@
+/* === 确认对话框 === */
+.confirm-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.confirm-dialog {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.confirm-dialog-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.confirm-dialog-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.confirm-dialog-body {
+  padding: 20px;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.confirm-dialog-body p {
+  margin: 0;
+}
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.btn-destructive {
+  padding: 8px 16px;
+  border: 1px solid var(--danger, #e53935);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger, #e53935);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: auto;
+}
+.btn-destructive:hover {
+  background: var(--danger, #e53935);
+  color: #fff;
+}
+
+/* === StatusBar 索引状态指示器 === */
+.status-bar-index {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: default;
+  padding: 0 4px;
+}
+.index-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  transition: background 0.2s, opacity 0.2s;
+}
+.index-dot.indexed {
+  background: #4caf50;
+  opacity: 1;
+}
+.index-dot.building {
+  background: var(--accent);
+  opacity: 1;
+  animation: index-pulse 1.2s infinite;
+}
+@keyframes index-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.index-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}

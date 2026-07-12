@@ -2,19 +2,29 @@ mod app_dir;
 mod filesystem;
 mod python_bridge;
 mod updater;
+mod settings_cmds;
+mod workspace_cmds;
+mod project_state_cmds;
+mod session_cmds;
 
 use std::sync::Mutex;
 use tauri::Manager;
 use app_dir::{
-    init_app_dir, get_settings, save_settings,
+    init_app_dir, write_log,
+    build_rag_index, search_rag, get_rag_index_status, delete_rag_index, refresh_rag_index,
+};
+use settings_cmds::{
+    get_settings, save_settings,
+    get_config, save_config, test_llm_connection, list_models,
+};
+use workspace_cmds::{
     get_recent_projects, add_recent_project, remove_recent_project,
     get_last_project, set_last_project, clear_last_project,
-    save_tree_state, load_tree_state,
+};
+use project_state_cmds::{save_tree_state, load_tree_state};
+use session_cmds::{
     list_sessions, load_session, save_session, delete_session,
     get_current_session, set_current_session,
-    get_config, save_config, test_llm_connection, list_models,
-    write_log,
-    build_rag_index, search_rag, get_rag_index_status, delete_rag_index, refresh_rag_index,
 };
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64,
     create_file, create_directory, delete_entry, rename_entry, copy_entry};
