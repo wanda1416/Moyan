@@ -213,39 +213,63 @@ impl PythonBridge {
 
     /// 定位 sidecar 可执行文件路径
     /// 优先级：
-    ///   1. 相对于当前可执行文件的同目录（PyInstaller 场景通常就在这里）
+    ///   1. 相对于当前可执行文件的同目录（含 target triple 后缀）
     ///   2. 资源目录的 binaries 子目录（Tauri sidecar 解析规则）
     fn resolve_sidecar_path(&self) -> Option<std::path::PathBuf> {
-        let exe_name = if cfg!(target_os = "windows") {
-            "moyan-backend.exe"
+        let base_name = "moyan-backend";
+        // 生成候选文件名：先查带 target triple 后缀的，再查不带后缀的
+        let candidates: Vec<String> = if cfg!(target_os = "windows") {
+            vec![
+                format!("{}-x86_64-pc-windows-msvc.exe", base_name),
+                format!("{}-aarch64-pc-windows-msvc.exe", base_name),
+                format!("{}.exe", base_name),
+            ]
+        } else if cfg!(target_os = "macos") {
+            vec![
+                format!("{}-aarch64-apple-darwin", base_name),
+                format!("{}-x86_64-apple-darwin", base_name),
+                base_name.to_string(),
+            ]
         } else {
-            "moyan-backend"
+            vec![
+                format!("{}-x86_64-unknown-linux-gnu", base_name),
+                format!("{}-aarch64-unknown-linux-gnu", base_name),
+                base_name.to_string(),
+            ]
         };
 
         // 1. 相对于当前可执行文件同目录
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                let candidate = dir.join(exe_name);
-                if candidate.exists() {
-                    return Some(candidate);
+                for name in &candidates {
+                    let candidate = dir.join(name);
+                    if candidate.exists() {
+                        return Some(candidate);
+                    }
                 }
                 // Tauri 把 sidecar 放在 resources/binaries/
-                let res = dir.join("resources").join("binaries").join(exe_name);
-                if res.exists() {
-                    return Some(res);
+                for name in &candidates {
+                    let res = dir.join("resources").join("binaries").join(name);
+                    if res.exists() {
+                        return Some(res);
+                    }
                 }
             }
         }
 
         // 2. 当前工作目录下的 resources/binaries/
         if let Ok(cwd) = std::env::current_dir() {
-            let res = cwd.join("resources").join("binaries").join(exe_name);
-            if res.exists() {
-                return Some(res);
+            for name in &candidates {
+                let res = cwd.join("resources").join("binaries").join(name);
+                if res.exists() {
+                    return Some(res);
+                }
             }
-            let cwd_direct = cwd.join(exe_name);
-            if cwd_direct.exists() {
-                return Some(cwd_direct);
+            for name in &candidates {
+                let cwd_direct = cwd.join(name);
+                if cwd_direct.exists() {
+                    return Some(cwd_direct);
+                }
             }
         }
 

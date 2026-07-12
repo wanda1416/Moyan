@@ -59,6 +59,103 @@ pub fn read_file_base64(path: String) -> Result<String, String> {
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
+// ============================================================
+// 文件操作命令（新建、删除、重命名、复制）
+// ============================================================
+
+/// 创建新文件
+#[tauri::command]
+pub fn create_file(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if p.exists() {
+        return Err(format!("文件已存在: {}", p.file_name().unwrap_or_default().to_string_lossy()));
+    }
+    // 确保父目录存在
+    if let Some(parent) = p.parent() {
+        if !parent.exists() {
+            return Err("父目录不存在".to_string());
+        }
+    }
+    std::fs::File::create(&p).map_err(|e| format!("创建文件失败: {}", e))?;
+    Ok(())
+}
+
+/// 创建新目录
+#[tauri::command]
+pub fn create_directory(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if p.exists() {
+        return Err(format!("目录已存在: {}", p.file_name().unwrap_or_default().to_string_lossy()));
+    }
+    std::fs::create_dir_all(&p).map_err(|e| format!("创建目录失败: {}", e))?;
+    Ok(())
+}
+
+/// 删除文件或目录
+#[tauri::command]
+pub fn delete_entry(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("文件或目录不存在".to_string());
+    }
+    if p.is_dir() {
+        std::fs::remove_dir_all(&p).map_err(|e| format!("删除目录失败: {}", e))?;
+    } else {
+        std::fs::remove_file(&p).map_err(|e| format!("删除文件失败: {}", e))?;
+    }
+    Ok(())
+}
+
+/// 重命名/移动文件或目录
+#[tauri::command]
+pub fn rename_entry(old_path: String, new_path: String) -> Result<(), String> {
+    let old = PathBuf::from(&old_path);
+    let new = PathBuf::from(&new_path);
+    if !old.exists() {
+        return Err("源文件不存在".to_string());
+    }
+    if new.exists() {
+        return Err(format!("目标已存在: {}", new.file_name().unwrap_or_default().to_string_lossy()));
+    }
+    std::fs::rename(&old, &new).map_err(|e| format!("重命名失败: {}", e))?;
+    Ok(())
+}
+
+/// 复制文件或目录
+#[tauri::command]
+pub fn copy_entry(src: String, dst: String) -> Result<(), String> {
+    let s = PathBuf::from(&src);
+    let d = PathBuf::from(&dst);
+    if !s.exists() {
+        return Err("源文件不存在".to_string());
+    }
+    if d.exists() {
+        return Err(format!("目标已存在: {}", d.file_name().unwrap_or_default().to_string_lossy()));
+    }
+    if s.is_dir() {
+        copy_dir_recursive(&s, &d).map_err(|e| format!("复制目录失败: {}", e))?;
+    } else {
+        std::fs::copy(&s, &d).map_err(|e| format!("复制文件失败: {}", e))?;
+    }
+    Ok(())
+}
+
+/// 递归复制目录
+fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 /// 递归构建目录树
 fn build_tree(dir: &PathBuf) -> Result<FileNode, String> {
     let name = dir

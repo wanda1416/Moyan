@@ -16,7 +16,8 @@ use app_dir::{
     write_log,
     build_rag_index, search_rag, get_rag_index_status, delete_rag_index, refresh_rag_index,
 };
-use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64};
+use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64,
+    create_file, create_directory, delete_entry, rename_entry, copy_entry};
 use python_bridge::{PythonBridge, PythonConfig, LaunchMode, start_python, stop_python, python_health_check, python_status};
 use updater::{check_update, app_version};
 
@@ -73,6 +74,12 @@ pub fn run() {
             write_file,
             read_file_base64,
             open_directory,
+            // 文件操作
+            create_file,
+            create_directory,
+            delete_entry,
+            rename_entry,
+            copy_entry,
             // Python 进程管理
             start_python,
             stop_python,
