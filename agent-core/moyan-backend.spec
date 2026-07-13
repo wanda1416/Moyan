@@ -4,12 +4,33 @@
 产物目录：agent-core/dist/moyan-backend/
 脚本会把 prompts/llm/agents/core/memory 五个子目录一起打包。
 """
+import os
 import sys
 from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
-# 收集需要包含的子模块
+# 确保 venv site-packages 在 modulegraph 搜索路径中
+# 优先使用 spec 文件同级 .venv（避免 pyinstaller 命令解析到系统 Python）
+try:
+    _spec_dir = SPECPATH  # PyInstaller 内置变量
+except NameError:
+    _spec_dir = os.getcwd()
+_site_pkgs = os.path.join(_spec_dir, ".venv", "Lib", "site-packages")
+if not os.path.isdir(_site_pkgs):
+    # fallback: 基于 sys.executable
+    _site_pkgs = os.path.join(os.path.dirname(os.path.dirname(sys.executable)), "Lib", "site-packages")
+if not os.path.isdir(_site_pkgs):
+    import site as _site_mod
+    _paths = [p for p in _site_mod.getsitepackages() if os.path.isdir(p)]
+    _site_pkgs = _paths[0] if _paths else ""
+
+# 将 venv site-packages 加入 sys.path，确保 collect_submodules 能找到已安装的包
+# （spec 文件运行在 Python 解释器中，可能是系统 Python 而非 venv）
+if _site_pkgs and _site_pkgs not in sys.path:
+    sys.path.insert(0, _site_pkgs)
+
+# 收集需要包含的子模块（始终 collect_submodules 以确保内部依赖链完整）
 hiddenimports = []
 for mod in [
     "uvicorn.logging",
@@ -37,12 +58,17 @@ for mod in [
     "fastembed",
     "onnxruntime",
     "tokenizers",
+    "faiss",
+    "numpy",
 ]:
-    hiddenimports += collect_submodules(mod) if mod in sys.modules else [mod]
+    try:
+        hiddenimports += collect_submodules(mod)
+    except Exception:
+        hiddenimports.append(mod)
 
 a = Analysis(
     ["main.py"],
-    pathex=[],
+    pathex=[_site_pkgs] if _site_pkgs else [],
     binaries=[],
     datas=[
         ("prompts", "prompts"),
@@ -58,7 +84,6 @@ a = Analysis(
     excludes=[
         "tkinter",
         "matplotlib",
-        "numpy",
         "pytest",
         "PIL",
         "scipy",
@@ -67,6 +92,7 @@ a = Analysis(
         "PyQt6",
         "wx",
         # RAG 瘦身：排除 PyTorch 生态（已迁移到 ONNX Runtime）
+        # 注意：numpy 是基础依赖（fastembed/onnxruntime/rag 均依赖），不可排除
         "torch",
         "transformers",
         "sentence_transformers",

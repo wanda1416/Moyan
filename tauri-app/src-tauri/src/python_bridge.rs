@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
@@ -172,6 +174,7 @@ impl PythonBridge {
 
     /// 发布态：使用打包好的 sidecar 可执行文件
     /// 通过 Tauri App handle 的 resource_dir 定位 sidecar 二进制
+    /// stdout/stderr 捕获到 ~/.moyan/logs/sidecar.log，便于诊断崩溃
     fn start_sidecar(&self) -> Result<String, String> {
         // 通过全局 PYTHON_PID 判断是否已启动（避免重复启动）
         let existing_pid = PYTHON_PID.load(Ordering::SeqCst);
@@ -185,14 +188,66 @@ impl PythonBridge {
 
         eprintln!("[PythonBridge] [sidecar] 路径: {}", sidecar_path.display());
 
-        let child = std::process::Command::new(sidecar_path.as_os_str())
+        // ── 准备日志文件 ──
+        let log_dir = dirs::home_dir()
+            .map(|h| h.join(".moyan").join("logs"))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let _ = std::fs::create_dir_all(&log_dir);
+        let log_path = log_dir.join("sidecar.log");
+
+        let log_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .map_err(|e| format!("无法打开 sidecar 日志 {}: {}", log_path.display(), e))?;
+
+        // 启动时间戳 + 诊断信息
+        {
+            let mut f = log_file.try_clone().map_err(|e| e.to_string())?;
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "\n=== sidecar 启动 {} PID={:?} ===",
+                ts, std::process::id());
+            let _ = writeln!(f, "路径: {}", sidecar_path.display());
+
+            // 诊断：文件大小
+            if let Ok(meta) = std::fs::metadata(&sidecar_path) {
+                let _ = writeln!(f, "文件大小: {} bytes", meta.len());
+            }
+
+            // 诊断：当前工作目录
+            if let Ok(cwd) = std::env::current_dir() {
+                let _ = writeln!(f, "工作目录: {}", cwd.display());
+            }
+
+            // 诊断：可能影响 PyInstaller 的环境变量
+            for var in &["PYTHONHOME", "PYTHONPATH", "PYTHONNOUSERSITE",
+                         "PYTHONDONTWRITEBYTECODE", "PYINSTALLER_CONFIG_DIR"] {
+                match std::env::var(var) {
+                    Ok(val) => { let _ = writeln!(f, "ENV {}={}", var, val); }
+                    Err(_) => {}
+                }
+            }
+
+            // 诊断：TEMP 目录
+            if let Ok(tmp) = std::env::var("TEMP") {
+                let _ = writeln!(f, "TEMP={}", tmp);
+            }
+        }
+
+        // ── 启动 sidecar 进程（piped 模式） ──
+        // 显式清除可能干扰 PyInstaller 的环境变量
+        let mut child = std::process::Command::new(sidecar_path.as_os_str())
+            .env_remove("PYTHONHOME")
+            .env_remove("PYTHONPATH")
+            .env_remove("PYTHONNOUSERSITE")
+            .env_remove("PYTHONDONTWRITEBYTECODE")
             .arg("--host")
             .arg(&self.config.host)
             .arg("--port")
             .arg(self.config.port.to_string())
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| {
                 format!(
@@ -204,6 +259,63 @@ impl PythonBridge {
 
         let pid = child.id();
         PYTHON_PID.store(pid, Ordering::SeqCst);
+
+        // ── stdout → 日志 ──
+        if let Some(stdout) = child.stdout.take() {
+            let mut log = log_file.try_clone().ok();
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines().flatten() {
+                    if let Some(ref mut f) = log {
+                        let _ = writeln!(f, "[stdout] {}", line);
+                        let _ = f.flush();
+                    }
+                }
+            });
+        }
+
+        // ── stderr → 日志 ──
+        if let Some(stderr) = child.stderr.take() {
+            let mut log = log_file.try_clone().ok();
+            std::thread::spawn(move || {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines().flatten() {
+                    if let Some(ref mut f) = log {
+                        let _ = writeln!(f, "[stderr] {}", line);
+                        let _ = f.flush();
+                    }
+                }
+            });
+        }
+
+        // ── 进程退出监控 ──
+        let log_for_watcher = log_file.try_clone().ok();
+        std::thread::spawn(move || {
+            match child.wait() {
+                Ok(status) => {
+                    if let Some(mut f) = log_for_watcher {
+                        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                        if status.success() {
+                            let _ = writeln!(f, "=== sidecar 正常退出 {} (code=0) ===", ts);
+                        } else {
+                            let code = status.code().unwrap_or(-1);
+                            let _ = writeln!(f, "=== sidecar 异常退出 {} (code={}) ===", ts, code);
+                        }
+                        let _ = f.flush();
+                    }
+                    PYTHON_PID.store(0, Ordering::SeqCst);
+                }
+                Err(e) => {
+                    if let Some(mut f) = log_for_watcher {
+                        let _ = writeln!(f, "[watcher] 等待进程退出失败: {}", e);
+                        let _ = f.flush();
+                    }
+                    PYTHON_PID.store(0, Ordering::SeqCst);
+                }
+            }
+        });
+
+        eprintln!("[PythonBridge] [sidecar] 日志: {}", log_path.display());
 
         Ok(format!(
             "Sidecar 进程已启动 (PID: {})，等待后端就绪...",

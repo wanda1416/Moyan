@@ -36,7 +36,7 @@ if exist "%AGENT_DIR%\dist"  rmdir /s /q "%AGENT_DIR%\dist"
 REM Pack
 echo [3/3] Running PyInstaller...
 cd /d "%AGENT_DIR%"
-pyinstaller moyan-backend.spec --noconfirm
+python -m PyInstaller moyan-backend.spec --noconfirm
 set "EXITCODE=%ERRORLEVEL%"
 
 REM Deactivate venv (defensive: not all venvs ship deactivate.bat)
