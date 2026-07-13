@@ -60,16 +60,21 @@ for mod in [
     "tokenizers",
     "faiss",
     "numpy",
+    "PIL",  # fastembed.ImageEmbedding 依赖
 ]:
     try:
         hiddenimports += collect_submodules(mod)
     except Exception:
         hiddenimports.append(mod)
 
+import glob as _glob
+_onnx_dlls = _glob.glob(os.path.join(_site_pkgs, "onnxruntime", "capi", "*.dll"))
+_onnx_binaries = [(f, os.path.join("onnxruntime", "capi")) for f in _onnx_dlls]
+
 a = Analysis(
     ["main.py"],
     pathex=[_site_pkgs] if _site_pkgs else [],
-    binaries=[],
+    binaries=_onnx_binaries,
     datas=[
         ("prompts", "prompts"),
         ("llm", "llm"),
@@ -80,12 +85,12 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["runtime_hook_onnx.py"],
     excludes=[
         "tkinter",
         "matplotlib",
         "pytest",
-        "PIL",
+        # PIL/Pillow: fastembed.ImageEmbedding 依赖，不可排除
         "scipy",
         "pandas",
         "PyQt5",

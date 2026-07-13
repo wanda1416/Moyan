@@ -49,7 +49,6 @@ if errorlevel 1 (
     echo [WARN] Artifact collection failed (build itself succeeded).
 )
 
-echo.
 echo === Moyan Build Complete ===
-echo Output: %SCRIPT_DIR%dist\
+echo Output: %SCRIPT_DIR%dist
 endlocal

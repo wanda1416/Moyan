@@ -25,7 +25,7 @@ def register_rag_routes(app: FastAPI):
             result = pindex.build_index(project_root)
             return {"status": "ok", "chunks": result["chunks"], "duration": result["duration"]}
         except ImportError as e:
-            return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install sentence-transformers faiss-cpu"}
+            return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install fastembed faiss-cpu"}
         except Exception as e:
             logger.error(f"构建索引失败: {e}")
             return {"status": "error", "message": f"构建索引失败: {str(e)}"}
@@ -52,7 +52,7 @@ def register_rag_routes(app: FastAPI):
                 "unchanged_files": result.get("unchanged_files", 0),
             }
         except ImportError as e:
-            return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install sentence-transformers faiss-cpu"}
+            return {"status": "error", "message": f"缺少依赖: {e}，请运行: pip install fastembed faiss-cpu"}
         except Exception as e:
             logger.error(f"刷新索引失败: {e}")
             return {"status": "error", "message": f"刷新索引失败: {str(e)}"}

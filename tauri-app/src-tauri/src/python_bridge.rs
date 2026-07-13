@@ -236,8 +236,8 @@ impl PythonBridge {
 
         // ── 启动 sidecar 进程（piped 模式） ──
         // 显式清除可能干扰 PyInstaller 的环境变量
-        let mut child = std::process::Command::new(sidecar_path.as_os_str())
-            .env_remove("PYTHONHOME")
+        let mut cmd = std::process::Command::new(sidecar_path.as_os_str());
+        cmd.env_remove("PYTHONHOME")
             .env_remove("PYTHONPATH")
             .env_remove("PYTHONNOUSERSITE")
             .env_remove("PYTHONDONTWRITEBYTECODE")
@@ -247,7 +247,16 @@ impl PythonBridge {
             .arg(self.config.port.to_string())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+
+        // Windows: 隐藏控制台窗口（CREATE_NO_WINDOW = 0x08000000）
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| {
                 format!(

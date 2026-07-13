@@ -42,7 +42,6 @@ if exist "%BUNDLE_DIR%\appimage" copy /Y "%BUNDLE_DIR%\appimage\*.AppImage" "%DI
 
 echo === Collect Summary ===
 echo Output: %DIST_DIR%
-echo.
-dir /B "%DIST_DIR%" 2>nul
+dir "%DIST_DIR%"
 
 endlocal
