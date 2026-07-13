@@ -133,16 +133,14 @@ if __name__ == "__main__":
     app_png.save(os.path.join(ICON_DIR, "app.png"), "PNG", optimize=True)
     print(f"  app.png: (256, 256)")
 
-    # Windows 多分辨率 ICO
-    ico_sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-    ico_imgs = [logo.resize(s, Image.LANCZOS) for s in ico_sizes]
-    ico_imgs[0].save(
+    # Windows 多分辨率 ICO（直接用 sizes 参数，Pillow 自动从源图缩放）
+    # 注意：append_images 方式在 Pillow 中生成的 ICO 只有 ~1KB，存在 bug
+    logo.convert("RGBA").save(
         os.path.join(ICON_DIR, "icon.ico"),
         format="ICO",
-        sizes=[(s.width, s.height) for s in ico_imgs],
-        append_images=ico_imgs[1:],
+        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
     )
-    print(f"  icon.ico: {ico_sizes}")
+    print(f"  icon.ico: 7 resolutions (16-256px)")
 
     # 前端展示用 logo
     logo_png = logo.resize((128, 128), Image.LANCZOS)

@@ -52,18 +52,42 @@ export default function AgentPanel({ currentFile, projectRoot }: AgentPanelProps
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // 启动时检查 Python 状态
+  // 启动时持续轮询后端健康状态，直到连通
+  const healthTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const checkHttpHealth = useCallback(async () => {
     try {
       const ok = await invoke<boolean>("python_health_check");
-      setPythonOnline(ok);
+      if (ok) {
+        setPythonOnline(true);
+        return true;
+      }
     } catch {
-      setPythonOnline(false);
+      // ignore
     }
+    return false;
   }, []);
 
   useEffect(() => {
-    checkHttpHealth();
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      const ok = await checkHttpHealth();
+      if (!ok && !cancelled) {
+        // 后端未就绪，1 秒后重试
+        healthTimerRef.current = setTimeout(poll, 1000);
+      }
+    };
+
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (healthTimerRef.current) {
+        clearTimeout(healthTimerRef.current);
+      }
+    };
   }, [checkHttpHealth]);
 
   // Python 在线时自动连接 WebSocket
