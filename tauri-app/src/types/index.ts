@@ -90,3 +90,11 @@ export interface SessionData {
   updated_at: string;
   messages: AgentMessage[];
 }
+
+/** 文件搜索结果 */
+export interface SearchResult {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  parent_path: string;
+}

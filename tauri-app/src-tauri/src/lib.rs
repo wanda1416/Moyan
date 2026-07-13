@@ -27,7 +27,7 @@ use session_cmds::{
     get_current_session, set_current_session,
 };
 use filesystem::{get_project_tree, read_file, write_file, open_directory, read_file_base64,
-    create_file, create_directory, delete_entry, rename_entry, copy_entry};
+    create_file, create_directory, delete_entry, rename_entry, copy_entry, search_files};
 use python_bridge::{PythonBridge, PythonConfig, LaunchMode, start_python, stop_python, python_health_check, python_status};
 use updater::{check_update, app_version};
 
@@ -90,6 +90,7 @@ pub fn run() {
             delete_entry,
             rename_entry,
             copy_entry,
+            search_files,
             // Python 进程管理
             start_python,
             stop_python,

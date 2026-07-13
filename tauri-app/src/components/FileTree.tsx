@@ -63,6 +63,7 @@ function FileTreeNode({
   onFileSelect,
   onContextMenu,
   onSelect,
+  onCloseContextMenu,
   onRenameChange,
   onRenameCommit,
   onRenameCancel,
@@ -80,6 +81,7 @@ function FileTreeNode({
   onFileSelect: (path: string) => void;
   onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
   onSelect: (path: string) => void;
+  onCloseContextMenu: () => void;
   onRenameChange: (value: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
@@ -109,6 +111,7 @@ function FileTreeNode({
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    onCloseContextMenu();
     onSelect(node.path);
     if (node.is_dir) {
       if (depth > 0) onToggle(node.path);
@@ -167,6 +170,7 @@ function FileTreeNode({
               onFileSelect={onFileSelect}
               onContextMenu={onContextMenu}
               onSelect={onSelect}
+              onCloseContextMenu={onCloseContextMenu}
               onRenameChange={onRenameChange}
               onRenameCommit={onRenameCommit}
               onRenameCancel={onRenameCancel}
@@ -556,10 +560,23 @@ export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, 
       items.push({ label: "刷新", action: "refresh" });
     }
 
+    // 估算菜单尺寸，防止溢出视口
+    const itemHeight = 32; // padding 6px*2 + font 13px + separator ~
+    const menuHeight = items.length * itemHeight;
+    const menuWidth = 180;
+    let menuX = contextMenu.x;
+    let menuY = contextMenu.y;
+    if (menuY + menuHeight > window.innerHeight) {
+      menuY = Math.max(8, window.innerHeight - menuHeight - 8);
+    }
+    if (menuX + menuWidth > window.innerWidth) {
+      menuX = Math.max(8, window.innerWidth - menuWidth - 8);
+    }
+
     return (
       <div
         className="context-menu"
-        style={{ left: contextMenu.x, top: contextMenu.y }}
+        style={{ left: menuX, top: menuY }}
         onClick={(e) => e.stopPropagation()}
       >
         {items.map((item, idx) => {
@@ -595,6 +612,7 @@ export default function FileTree({ projectRoot, onFileSelect, onExpandedChange, 
           onFileSelect={onFileSelect}
           onContextMenu={handleContextMenu}
           onSelect={setSelectedPath}
+          onCloseContextMenu={() => setContextMenu(null)}
           onRenameChange={setRenameValue}
           onRenameCommit={handleRenameCommit}
           onRenameCancel={() => setRenamingPath(null)}

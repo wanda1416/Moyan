@@ -2,6 +2,8 @@
 @import "./styles/titlebar.css";
 @import "./styles/layout.css";
 @import "./styles/file-tree.css";
+@import "./styles/activity-bar.css";
+@import "./styles/search-panel.css";
 @import "./styles/editor.css";
 @import "./styles/agent-panel.css";
 @import "./styles/welcome.css";

@@ -11,6 +11,8 @@ import ProjectSettings from "./components/ProjectSettings";
 import TabBar from "./components/TabBar";
 import StatusBar from "./components/StatusBar";
 import ConfirmDialog from "./components/ConfirmDialog";
+import ActivityBar, { type SidebarView } from "./components/ActivityBar";
+import SearchPanel from "./components/SearchPanel";
 import { useAppTabs, SETTINGS_TAB_PATH, PROJECT_SETTINGS_TAB_PATH } from "./hooks/useAppTabs";
 import "./styles.css";
 
@@ -43,6 +45,7 @@ function App() {
   const [theme, setTheme] = useState<Theme>("light");
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [agentWidth, setAgentWidth] = useState(DEFAULT_AGENT_WIDTH);
+  const [sidebarView, setSidebarView] = useState<SidebarView>("explorer");
 
   // 多标签状态（由 hook 管理）
   const {
@@ -519,25 +522,32 @@ function App() {
         <Welcome onOpenProject={handleOpenProject} />
       ) : (
         <div className="app-container">
+          <ActivityBar activeView={sidebarView} onViewChange={setSidebarView} />
           <aside className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
-            <div className="sidebar-header">
-              <span className="project-name">{projectRoot.split(/[\\/]/).pop()}</span>
-              <button
-                className="btn-icon"
-                title="切换项目"
-                onClick={handleCloseProject}
-              >
-                ✕
-              </button>
-            </div>
-            <FileTree
-              projectRoot={projectRoot}
-              onFileSelect={handleFileSelect}
-              onExpandedChange={handleExpandedChange}
-              onReady={handleFileTreeReady}
-              getCurrentFile={getCurrentFile}
-              getPanelWidths={getPanelWidths}
-            />
+            {sidebarView === "explorer" ? (
+              <>
+                <div className="sidebar-header">
+                  <span className="project-name">{projectRoot.split(/[\\/]/).pop()}</span>
+                  <button
+                    className="btn-icon"
+                    title="切换项目"
+                    onClick={handleCloseProject}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <FileTree
+                  projectRoot={projectRoot}
+                  onFileSelect={handleFileSelect}
+                  onExpandedChange={handleExpandedChange}
+                  onReady={handleFileTreeReady}
+                  getCurrentFile={getCurrentFile}
+                  getPanelWidths={getPanelWidths}
+                />
+              </>
+            ) : (
+              <SearchPanel projectRoot={projectRoot} onFileSelect={handleFileSelect} />
+            )}
           </aside>
           <div className="resize-handle" onMouseDown={(e) => handleResizeStart("sidebar", e)} />
           <main className="editor-area">

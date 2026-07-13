@@ -156,6 +156,69 @@ fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+/// 搜索结果项
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub parent_path: String,
+}
+
+/// 在项目目录中搜索文件/文件夹（模糊匹配文件名）
+#[tauri::command]
+pub fn search_files(root: String, query: String) -> Result<Vec<SearchResult>, String> {
+    let root_path = PathBuf::from(&root);
+    if !root_path.exists() {
+        return Err("项目目录不存在".to_string());
+    }
+    let query_lower = query.to_lowercase();
+    let mut results = Vec::new();
+    search_recursive(&root_path, &query_lower, &mut results)?;
+    results.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(results)
+}
+
+fn search_recursive(
+    dir: &PathBuf,
+    query: &str,
+    results: &mut Vec<SearchResult>,
+) -> Result<(), String> {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut sorted: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+        sorted.sort_by_key(|e| e.file_name());
+
+        for entry in sorted {
+            let path = entry.path();
+            let file_name = entry.file_name().to_string_lossy().to_string();
+
+            // 跳过隐藏文件和 node_modules
+            if file_name.starts_with('.') || file_name == "node_modules" || file_name == "target" {
+                continue;
+            }
+
+            // 模糊匹配：文件名包含查询字符串（不区分大小写）
+            if file_name.to_lowercase().contains(query) {
+                let parent = path.parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                results.push(SearchResult {
+                    name: file_name,
+                    path: path.to_string_lossy().to_string(),
+                    is_dir: path.is_dir(),
+                    parent_path: parent,
+                });
+            }
+
+            // 递归子目录
+            if path.is_dir() {
+                search_recursive(&path, query, results)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// 递归构建目录树
 fn build_tree(dir: &PathBuf) -> Result<FileNode, String> {
     let name = dir
