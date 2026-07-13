@@ -15,13 +15,15 @@ if not exist "%AGENT_DIR%\.venv\Scripts\python.exe" (
     exit /b 1
 )
 
+set "VENV_PYTHON=%AGENT_DIR%\.venv\Scripts\python.exe"
+echo Using Python: %VENV_PYTHON%
+
 REM Install PyInstaller if missing
 echo [1/3] Checking pyinstaller...
-call "%AGENT_DIR%\.venv\Scripts\activate.bat" >nul 2>&1
-python -m pip show pyinstaller >nul 2>&1
+"%VENV_PYTHON%" -m pip show pyinstaller >nul 2>&1
 if errorlevel 1 (
     echo     Installing pyinstaller...
-    python -m pip install pyinstaller
+    "%VENV_PYTHON%" -m pip install pyinstaller
     if errorlevel 1 (
         echo [ERROR] Failed to install pyinstaller.
         exit /b 1
@@ -36,21 +38,33 @@ if exist "%AGENT_DIR%\dist"  rmdir /s /q "%AGENT_DIR%\dist"
 REM Pack
 echo [3/3] Running PyInstaller...
 cd /d "%AGENT_DIR%"
-python -m PyInstaller moyan-backend.spec --noconfirm
+"%VENV_PYTHON%" -m PyInstaller moyan-backend.spec --noconfirm
 set "EXITCODE=%ERRORLEVEL%"
-
-REM Deactivate venv (defensive: not all venvs ship deactivate.bat)
-if exist "%AGENT_DIR%\.venv\Scripts\deactivate.bat" (
-    call "%AGENT_DIR%\.venv\Scripts\deactivate.bat" >nul 2>&1
-)
 
 if not "%EXITCODE%"=="0" (
     echo [ERROR] PyInstaller build failed with exit code %EXITCODE%.
     exit /b %EXITCODE%
 )
 
+REM ── Post-build diagnostics ──
+echo.
+echo === Post-build Diagnostics ===
+for %%F in ("%AGENT_DIR%\dist\moyan-backend.exe") do echo   Exe size: %%~zF bytes
+
+REM Check warn file for missing critical modules
+set "WARN_FILE=%AGENT_DIR%\build\moyan-backend\warn-moyan-backend.txt"
+if exist "%WARN_FILE%" (
+    for %%M in (fastapi uvicorn pydantic onnxruntime faiss numpy PIL) do (
+        findstr /C:"missing module named %%M -" "%WARN_FILE%" >nul 2>&1
+        if not errorlevel 1 echo   [WARN] missing module: %%M
+    )
+) else (
+    echo   [WARN] warn file not found: %WARN_FILE%
+)
+
 echo.
 echo === Done ===
 echo Backend built: %AGENT_DIR%\dist\moyan-backend.exe
-echo (onefile mode: a single self-contained exe, ~50 MB)
-endlocal
+
+REM Exit with PyInstaller's exit code
+endlocal & exit /b %EXITCODE%

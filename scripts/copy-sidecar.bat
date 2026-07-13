@@ -50,9 +50,14 @@ if not exist "%SRC%" (
 if not exist "%DEST_DIR%" mkdir "%DEST_DIR%"
 copy /Y "%SRC%" "%DEST%" >nul
 
-if "%IS_WINDOWS%"=="0" (
-    echo Setting executable permission on %DEST%
+REM ── Post-copy verification ──
+for %%F in ("%SRC%") do set "SRC_SIZE=%%~zF"
+for %%F in ("%DEST%") do set "DEST_SIZE=%%~zF"
+echo Sidecar copied: %DEST%
+echo   Source:      %SRC_SIZE% bytes
+echo   Destination: %DEST_SIZE% bytes
+if not "%SRC_SIZE%"=="%DEST_SIZE%" (
+    echo   [ERROR] Size mismatch! Copy may be corrupted.
 )
 
-echo Sidecar copied to: %DEST%
 endlocal

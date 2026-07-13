@@ -18,6 +18,18 @@ from rag.embedder import Embedder
 
 logger = logging.getLogger(__name__)
 
+# ── RAG dependency diagnostics (logged once at import time) ──
+_rag_deps_ok = True
+for _dep_name, _dep_mod in [('numpy', 'np'), ('faiss', 'faiss'), ('fastembed', 'TextEmbedding')]:
+    try:
+        __import__(_dep_name)
+        logger.debug(f"[RAG] {_dep_name}: OK")
+    except Exception as _e:
+        _rag_deps_ok = False
+        logger.error(f"[RAG] {_dep_name}: FAIL - {_e}")
+if not _rag_deps_ok:
+    logger.error("[RAG] Some dependencies failed to load. RAG features will be unavailable.")
+
 
 def _project_path_to_uid(path: str) -> str:
     """项目路径转 UID（与 Rust 端 app_dir.rs 的 DJB2 hash 保持一致）"""

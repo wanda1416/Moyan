@@ -31,6 +31,26 @@ class Embedder:
 
         logger.info(f"正在加载 Embedding 模型: {self.model_name} ...")
         try:
+            # Diagnostic: check onnxruntime before fastembed
+            import sys
+            import os
+            try:
+                import onnxruntime as ort
+                logger.debug(f"[RAG] onnxruntime version: {ort.__version__}")
+                logger.debug(f"[RAG] onnxruntime path: {ort.__file__}")
+            except Exception as _e:
+                logger.error(f"[RAG] onnxruntime import FAIL: {_e}")
+                # DLL diagnostic for frozen env
+                if getattr(sys, 'frozen', False):
+                    _meipass = getattr(sys, '_MEIPASS', '')
+                    _onnx_dir = os.path.join(_meipass, 'onnxruntime', 'capi')
+                    if os.path.isdir(_onnx_dir):
+                        _dlls = [f for f in os.listdir(_onnx_dir) if f.endswith('.dll')]
+                        logger.error(f"[RAG] onnxruntime capi DLLs: {_dlls}")
+                    else:
+                        logger.error(f"[RAG] onnxruntime capi dir NOT FOUND: {_onnx_dir}")
+                raise
+
             from fastembed import TextEmbedding
             self._model = TextEmbedding(model_name=self.model_name)
             logger.info(f"Embedding 模型加载完成: {self.model_name}")
