@@ -33,6 +33,10 @@ for mod in [
     "websockets",
     "markdown",
     "frontmatter",
+    # RAG: fastembed (ONNX Runtime)
+    "fastembed",
+    "onnxruntime",
+    "tokenizers",
 ]:
     hiddenimports += collect_submodules(mod) if mod in sys.modules else [mod]
 
@@ -62,6 +66,12 @@ a = Analysis(
         "PyQt5",
         "PyQt6",
         "wx",
+        # RAG 瘦身：排除 PyTorch 生态（已迁移到 ONNX Runtime）
+        "torch",
+        "transformers",
+        "sentence_transformers",
+        "sympy",
+        "sklearn",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

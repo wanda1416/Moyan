@@ -4,9 +4,6 @@ REM Usage: copy-sidecar.bat ^<target-triple^>
 REM Example:
 REM   copy-sidecar.bat x86_64-pc-windows-msvc
 
-REM Use UTF-8 code page so Chinese characters in path/filename are handled correctly
-chcp 65001 >nul
-
 setlocal
 
 if "%~1"=="" (
