@@ -2,6 +2,9 @@
 REM Moyan artifact collector (Windows)
 REM Copies build outputs from tauri target to <root>/dist/
 
+REM Use UTF-8 code page so Chinese characters in path/filename are handled correctly
+chcp 65001 >nul
+
 setlocal EnableDelayedExpansion
 
 set "SCRIPT_DIR=%~dp0"

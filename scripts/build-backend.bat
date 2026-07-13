@@ -2,6 +2,9 @@
 REM Moyan Python backend build script (Windows)
 REM Pack agent-core into a standalone executable via PyInstaller
 
+REM Use UTF-8 code page so Chinese characters in path/filename are handled correctly
+chcp 65001 >nul
+
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
@@ -49,7 +52,7 @@ if not "%EXITCODE%"=="0" (
     exit /b %EXITCODE%
 )
 
-echo.
+echo(
 echo === Done ===
 echo Backend built: %AGENT_DIR%\dist\moyan-backend.exe
 echo (onefile mode: a single self-contained exe, ~50 MB)
