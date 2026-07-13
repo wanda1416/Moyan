@@ -1,3 +1,5 @@
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { AgentMessage } from "../types";
 
 interface ChatMessageProps {
@@ -15,7 +17,13 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         {message.agent_type && !isUser && (
           <div className="chat-agent-label">{getAgentLabel(message.agent_type)}</div>
         )}
-        <div className="chat-text">{message.content}</div>
+        <div className={`chat-text${!isUser ? " markdown-body" : ""}`}>
+          {!isUser ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          ) : (
+            message.content
+          )}
+        </div>
         {hasReferences && (
           <div className="chat-references">
             <span className="ref-label">引用来源:</span>

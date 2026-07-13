@@ -1128,6 +1128,105 @@ html, body, #root {
   background: var(--accent);
   color: var(--bg-primary);
 }
+/* === Markdown 渲染（AI 消息） === */
+.chat-text.markdown-body {
+  word-break: break-word;
+}
+.chat-text.markdown-body > *:first-child {
+  margin-top: 0;
+}
+.chat-text.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+.chat-text.markdown-body h1,
+.chat-text.markdown-body h2,
+.chat-text.markdown-body h3,
+.chat-text.markdown-body h4,
+.chat-text.markdown-body h5,
+.chat-text.markdown-body h6 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chat-text.markdown-body h1 { font-size: 18px; }
+.chat-text.markdown-body h2 { font-size: 16px; }
+.chat-text.markdown-body h3 { font-size: 15px; }
+.chat-text.markdown-body h4,
+.chat-text.markdown-body h5,
+.chat-text.markdown-body h6 { font-size: 14px; }
+.chat-text.markdown-body p {
+  margin: 6px 0;
+}
+.chat-text.markdown-body ul,
+.chat-text.markdown-body ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+.chat-text.markdown-body li {
+  margin: 2px 0;
+}
+.chat-text.markdown-body li > p {
+  margin: 2px 0;
+}
+.chat-text.markdown-body code {
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg-surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.chat-text.markdown-body pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.chat-text.markdown-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+.chat-text.markdown-body blockquote {
+  margin: 8px 0;
+  padding: 4px 12px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
+}
+.chat-text.markdown-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+  width: 100%;
+}
+.chat-text.markdown-body th,
+.chat-text.markdown-body td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  text-align: left;
+}
+.chat-text.markdown-body th {
+  background: var(--bg-surface);
+  font-weight: 600;
+}
+.chat-text.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+.chat-text.markdown-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.chat-text.markdown-body a:hover {
+  text-decoration: underline;
+}
+.chat-text.markdown-body strong {
+  font-weight: 600;
+}
+
 .chat-time {
   font-size: 11px;
   color: var(--text-secondary);
