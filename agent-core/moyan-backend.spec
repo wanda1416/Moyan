@@ -115,10 +115,8 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    exclude_binaries=False,
+    [],
+    exclude_binaries=True,
     name="moyan-backend",
     debug=False,
     bootloader_ignore_signals=False,
@@ -131,13 +129,11 @@ exe = EXE(
     entitlements_file=None,
 )
 
-# 使用 onefile 模式：所有依赖（_internal/）都内嵌到 moyan-backend.exe 中，
-# 避免 NSIS 安装包漏掉 _internal/ 目录导致 sidecar 启动失败（找不到 python313.DLL）。
-# 运行时 bootloader 会把内嵌资源解压到 %TEMP%/_MEIxxxxx，再启动解释器。
-#
-# 之前用 COLLECT 模式时，产物是：
-#   dist/moyan-backend/moyan-backend.exe        (5.9 MB, 引导器)
-#   dist/moyan-backend/_internal/python313.DLL  (6.1 MB)  + 其他 24 MB
-# 但 NSIS bundle 只把 moyan-backend.exe 拷进安装目录，整个 _internal/ 被丢下了。
-
-# (COLLECT step removed for onefile build)
+# onedir 模式：产物为 dist/moyan-backend/ 目录（exe + _internal/）
+# exe 直接读同目录 _internal/ 中的依赖，无需解压到 %TEMP%，启动秒开
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    name="moyan-backend",
+)

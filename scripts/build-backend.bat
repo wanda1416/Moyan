@@ -2,7 +2,7 @@
 REM Moyan Python backend build script (Windows)
 REM Pack agent-core into a standalone executable via PyInstaller
 
-setlocal
+setlocal enabledelayedexpansion
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT=%SCRIPT_DIR%.."
@@ -49,7 +49,18 @@ if not "%EXITCODE%"=="0" (
 REM ── Post-build diagnostics ──
 echo.
 echo === Post-build Diagnostics ===
-for %%F in ("%AGENT_DIR%\dist\moyan-backend.exe") do echo   Exe size: %%~zF bytes
+for %%F in ("%AGENT_DIR%\dist\moyan-backend\moyan-backend.exe") do echo   Exe size: %%~zF bytes
+
+REM Check _internal directory size
+set "INTERNAL_DIR=%AGENT_DIR%\dist\moyan-backend\_internal"
+if exist "%INTERNAL_DIR%" (
+    set "TOTAL_SIZE=0"
+    for /R "%INTERNAL_DIR%" %%F in (*) do set /a TOTAL_SIZE+=%%~zF
+    set /a TOTAL_MB=!TOTAL_SIZE!/1048576
+    echo   _internal/: ~!TOTAL_MB! MB
+) else (
+    echo   [WARN] _internal/ directory not found!
+)
 
 REM Check warn file for missing critical modules
 set "WARN_FILE=%AGENT_DIR%\build\moyan-backend\warn-moyan-backend.txt"
@@ -64,7 +75,7 @@ if exist "%WARN_FILE%" (
 
 echo.
 echo === Done ===
-echo Backend built: %AGENT_DIR%\dist\moyan-backend.exe
+echo Backend built: %AGENT_DIR%\dist\moyan-backend\
 
 REM Exit with PyInstaller's exit code
 endlocal & exit /b %EXITCODE%

@@ -6,24 +6,30 @@ Novel Agent - AI 小说协作后端
 import sys
 import os
 
-# ── Frozen environment diagnostics ──
+# ── Frozen environment diagnostics (non-blocking, onedir mode) ──
+# In onedir mode, _MEIPASS points to _internal/ next to the exe (no %TEMP% extraction)
 if getattr(sys, 'frozen', False):
-    _exe = sys.executable
-    _meipass = getattr(sys, '_MEIPASS', 'N/A')
-    _size = os.path.getsize(_exe) if os.path.isfile(_exe) else -1
-    print(f"[DIAG] === Frozen Environment ===", file=sys.stderr)
-    print(f"[DIAG] exe: {_exe}", file=sys.stderr)
-    print(f"[DIAG] exe size: {_size} bytes", file=sys.stderr)
-    print(f"[DIAG] _MEIPASS: {_meipass}", file=sys.stderr)
-    print(f"[DIAG] Python: {sys.version}", file=sys.stderr)
-    # Check critical imports early
-    for _mod in ['fastapi', 'uvicorn', 'pydantic', 'numpy', 'PIL']:
-        try:
-            __import__(_mod)
-            print(f"[DIAG] import {_mod}: OK", file=sys.stderr)
-        except Exception as _e:
-            print(f"[DIAG] import {_mod}: FAIL - {_e}", file=sys.stderr)
-    print(f"[DIAG] ===========================", file=sys.stderr)
+    import threading
+    def _diag():
+        import time
+        time.sleep(0.5)  # let uvicorn start first
+        _exe = sys.executable
+        _meipass = getattr(sys, '_MEIPASS', 'N/A')
+        _size = os.path.getsize(_exe) if os.path.isfile(_exe) else -1
+        print(f"[DIAG] === Frozen Environment ===", file=sys.stderr)
+        print(f"[DIAG] exe: {_exe}", file=sys.stderr)
+        print(f"[DIAG] exe size: {_size} bytes", file=sys.stderr)
+        print(f"[DIAG] _MEIPASS: {_meipass}", file=sys.stderr)
+        print(f"[DIAG] Python: {sys.version}", file=sys.stderr)
+        # Check critical imports after server is up
+        for _mod in ['fastapi', 'uvicorn', 'pydantic', 'numpy', 'PIL', 'onnxruntime', 'faiss']:
+            try:
+                __import__(_mod)
+                print(f"[DIAG] import {_mod}: OK", file=sys.stderr)
+            except Exception as _e:
+                print(f"[DIAG] import {_mod}: FAIL - {_e}", file=sys.stderr)
+        print(f"[DIAG] ===========================", file=sys.stderr)
+    threading.Thread(target=_diag, daemon=True).start()
 
 import logging
 from contextlib import asynccontextmanager

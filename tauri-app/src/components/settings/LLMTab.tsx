@@ -82,15 +82,18 @@ export default function LLMTab({ onDirtyChange }: LLMTabProps) {
     }
   }, [loading, providers, activeProviderId]);
 
-  // 脏检测
+  // 脏检测（只在 providers / activeProviderId 变化时检查）
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+
   useEffect(() => {
     const dirty = !!llmSnapshotRef.current &&
       llmSnapshotRef.current !== JSON.stringify({
         active_provider_id: activeProviderId,
         providers,
       } as LLMConfig);
-    onDirtyChange(dirty);
-  }, [providers, activeProviderId, onDirtyChange]);
+    onDirtyChangeRef.current(dirty);
+  }, [providers, activeProviderId]);
 
   const updateEditing = (patch: Partial<LLMProviderEntry>) => {
     setProviders((prev) =>
@@ -127,11 +130,20 @@ export default function LLMTab({ onDirtyChange }: LLMTabProps) {
     setMessage("");
   };
 
-  const handleActivate = (id: string) => {
+  const handleActivate = async (id: string) => {
     setActiveProviderId(id);
     setEditingId(id);
     setAvailableModels([]);
     setMessage("");
+    // 激活即生效：立即持久化
+    try {
+      const config: LLMConfig = { active_provider_id: id, providers };
+      await invoke<string>("save_config", { config });
+      llmSnapshotRef.current = JSON.stringify(config);
+      setMessage("✓ 已切换默认供应商");
+    } catch (err) {
+      setMessage(`切换失败: ${err}`);
+    }
   };
 
   const handleSelect = (id: string) => {

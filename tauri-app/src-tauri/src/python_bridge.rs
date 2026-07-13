@@ -337,60 +337,28 @@ impl PythonBridge {
     ///   1. 相对于当前可执行文件的同目录（含 target triple 后缀）
     ///   2. 资源目录的 binaries 子目录（Tauri sidecar 解析规则）
     fn resolve_sidecar_path(&self) -> Option<std::path::PathBuf> {
-        let base_name = "moyan-backend";
-        // 生成候选文件名：先查带 target triple 后缀的，再查不带后缀的
-        let candidates: Vec<String> = if cfg!(target_os = "windows") {
-            vec![
-                format!("{}-x86_64-pc-windows-msvc.exe", base_name),
-                format!("{}-aarch64-pc-windows-msvc.exe", base_name),
-                format!("{}.exe", base_name),
-            ]
-        } else if cfg!(target_os = "macos") {
-            vec![
-                format!("{}-aarch64-apple-darwin", base_name),
-                format!("{}-x86_64-apple-darwin", base_name),
-                base_name.to_string(),
-            ]
+        let exe_name = if cfg!(target_os = "windows") {
+            "moyan-backend.exe"
         } else {
-            vec![
-                format!("{}-x86_64-unknown-linux-gnu", base_name),
-                format!("{}-aarch64-unknown-linux-gnu", base_name),
-                base_name.to_string(),
-            ]
+            "moyan-backend"
         };
 
-        // 1. 相对于当前可执行文件同目录
+        // onedir 模式：exe 在 binaries/moyan-backend/ 目录内
+        // 安装后路径: <install_dir>/binaries/moyan-backend/moyan-backend.exe
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
-                for name in &candidates {
-                    let candidate = dir.join(name);
-                    if candidate.exists() {
-                        return Some(candidate);
-                    }
-                }
-                // Tauri 把 sidecar 放在 resources/binaries/
-                for name in &candidates {
-                    let res = dir.join("resources").join("binaries").join(name);
-                    if res.exists() {
-                        return Some(res);
-                    }
+                let path = dir.join("binaries").join("moyan-backend").join(exe_name);
+                if path.exists() {
+                    return Some(path);
                 }
             }
         }
 
-        // 2. 当前工作目录下的 resources/binaries/
+        // 当前工作目录下的 binaries/moyan-backend/
         if let Ok(cwd) = std::env::current_dir() {
-            for name in &candidates {
-                let res = cwd.join("resources").join("binaries").join(name);
-                if res.exists() {
-                    return Some(res);
-                }
-            }
-            for name in &candidates {
-                let cwd_direct = cwd.join(name);
-                if cwd_direct.exists() {
-                    return Some(cwd_direct);
-                }
+            let path = cwd.join("binaries").join("moyan-backend").join(exe_name);
+            if path.exists() {
+                return Some(path);
             }
         }
 
@@ -404,8 +372,8 @@ impl PythonBridge {
             return Ok(msg);
         }
 
-        // 等待后端就绪（最多 15 秒）
-        for _ in 0..15 {
+        // 等待后端就绪（最多 30 秒，onefile 模式首次启动需要解压）
+        for _ in 0..30 {
             std::thread::sleep(std::time::Duration::from_secs(1));
             if self.health_check_sync() {
                 let pid = PYTHON_PID.load(Ordering::SeqCst);

@@ -431,6 +431,15 @@ function App() {
     }
   }, []);
 
+  const handleSettingsDirty = useCallback((dirty: boolean) => {
+    settingsDirtyRef.current = dirty;
+    setSettingsDirty(dirty);
+  }, []);
+
+  const handleRegisterApply = useCallback((fn: () => Promise<boolean>) => {
+    settingsApplyRef.current = fn;
+  }, []);
+
   // 供 FileTree 防抖保存时获取当前文件
   const getCurrentFile = useCallback(() => currentFileRef.current, []);
 
@@ -568,11 +577,8 @@ function App() {
                 initialTab={settingsTabRequest}
                 appliedSettings={{ fontFamily: editorFontFamily, fontSize: editorFontSize }}
                 onApplyEditor={handleApplyEditorSettings}
-                onDirtyChange={(dirty) => {
-                  settingsDirtyRef.current = dirty;
-                  setSettingsDirty(dirty);
-                }}
-                registerApply={(fn) => { settingsApplyRef.current = fn; }}
+                onDirtyChange={handleSettingsDirty}
+                registerApply={handleRegisterApply}
               />
             ) : isProjectSettingsActive && projectRoot ? (
               <ProjectSettings projectRoot={projectRoot} />
