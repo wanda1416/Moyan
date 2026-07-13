@@ -131,15 +131,16 @@ export default function LLMTab({ onDirtyChange }: LLMTabProps) {
   };
 
   const handleActivate = async (id: string) => {
+    // 先同步更新快照，再触发 state 变更，避免脏检测 effect 看到不一致
+    const config: LLMConfig = { active_provider_id: id, providers };
+    llmSnapshotRef.current = JSON.stringify(config);
     setActiveProviderId(id);
     setEditingId(id);
     setAvailableModels([]);
     setMessage("");
-    // 激活即生效：立即持久化
+    // 异步持久化
     try {
-      const config: LLMConfig = { active_provider_id: id, providers };
       await invoke<string>("save_config", { config });
-      llmSnapshotRef.current = JSON.stringify(config);
       setMessage("✓ 已切换默认供应商");
     } catch (err) {
       setMessage(`切换失败: ${err}`);
